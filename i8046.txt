@@ -1,0 +1,271 @@
+
+Registers:
+	00h - r0
+	
+	01h - X1	04h - X2	07h - X3	0Ah - X4	0Dh - X5
+	02h - XL1	05h - XL2	08h - XL3	0Bh - XL4	0Eh - XL5
+	03h - XH1	06h - XH2	09h - XH3	0Ch - XH4	0Fh - XH5
+	
+	10h - IX	14h - CS	18h - SCS	1Ch - A0
+	11h - IY	15h - DS	19h - SDS	1Dh - A1
+	12h - SP	16h - SS	1Ah - SSS	1Eh - FL
+	13h - BP	17h - ES	1Bh - SES	1Fh - IC
+	
+	-# Xn = [XHn + XLn]
+	-# Addr = [R + S] >= Size
+	
+Modes:
+	#ID - #BIN - #NAME
+	00h - 0000 - Byte
+	01h - 0001 - Word 
+	02h - 0010 - Addr
+	03h - 0011 - Dword X
+	04h - 0100 - Register (Lookup)
+	05h - 0101 - Qword X
+	
+Instruction types:
+	#ID - #Name - #Length - #Mnemonic
+	
+	00h - S0    - 2B 	  - <OP> <->
+	01h - S1	- 3B	  - <OP> <-> <rD>
+	02h - S2 	- 3B	  - <OP> <-> <rS>
+	03h - S3    - 3B      - <OP> <-> <rS/D>
+	04h - S4    - 3B      - <OP> <-> <Imm8>
+	05h - S5    - 4B	  - <OP> <-> <Imm16>
+	06h - S6 	- 5B	  - <OP> <-> <Imm24>
+	
+	07h - A0	- 4B	  - <OP> <SF> <rS/D> <rS>
+	08h - A1	- 4B	  - <OP> <SF> <rS/D> <Imm8>
+	09h - A2	- 5B	  - <OP> <SF> <rS/D> <Imm16>
+	0Ah - A3	- 6B	  - <OP> <SF> <rS/D> <Imm24>
+	
+	0Bh - J0	- 6B	  - <OP> <-> <COND> <Imm24>
+	
+	0Ch - D0	- 4B	  - <OP> <SF> <rD> <rS>
+	0Dh - D1B 	- 4B	  - <OP> <SF> <rD> <Imm8>
+	0Eh - D1W	- 5B	  - <OP> <SF> <rD> <Imm16>
+	0Fh - D1A   - 6B	  - <OP> <SF> <rD> <Imm24>
+	
+	10h - D2F 	- 6B	  - <OP> <SF> <rS> <Addr24>
+	11h - D2S	- 5B	  - <OP> <SF> <rS> <rB>:<rA>
+	12h - D2SI  - 7B	  - <OP> <SF> <rS> <rB>:<Addr24>
+	13h - D2R	- 4B	  - <OP> <SF> <rS> <rA>
+
+	14h - D3F 	- 6B	  - <OP> <SF> <rD> <Addr24>
+	15h - D3S	- 5B	  - <OP> <SF> <rD> <rB>:<rA>
+	16h - D3SI  - 7B	  - <OP> <SF> <rD> <rB>:<Addr24>
+	17h - D3R	- 4B	  - <OP> <SF> <rD> <rA>
+	
+Instructions:
+	#OP #SF - #Name  - #InsType - #FlMask  - #Description
+	
+	00h 00h - NOP	 - S0		- ******** - No operation
+	01h 00h - HALT	 - S0		- ******** - Halt clock
+	
+	02h 00h - ADD    - A0		- ***ZOS*C - Addition
+	02h 01h - ADD.b	 - A1		- ***ZOS*C - Add byte-immediate
+	02h 02h - ADD.w  - A2		- ***ZOS*C - Add word-immediate
+	02h 03h - ADD.a  - A3 		- ***ZOS*C - Add addr-immediate
+	
+	03h 00h - ADC    - A0		- ***ZOS*C - Addition with carry
+	
+	04h 00h - SUB    - A0		- ***ZOSB* - Subtraction
+	04h 01h - SUB.b	 - A1		- ***ZOSB* - Subtract byte-immediate
+	04h 02h - SUB.w  - A2		- ***ZOSB* - Subtract word-immediate
+	04h 03h - SUB.a  - A3 		- ***ZOSB* - Subtract addr-immediate
+	
+	05h 00h - SBB    - A0		- ***ZOSB* - Subtraction with borrow
+	
+	06h 00h - MUL    - A0		- ***ZOS** - Multiply
+	06h 01h - MUL.b	 - A1		- ***ZOS** - Multiply byte-immediate
+	06h 02h - MUL.w  - A2		- ***ZOS** - Multiply word-immediate
+	06h 03h - MUL.a  - A3 		- ***ZOS** - Multiply addr-immediate
+	
+	07h 00h - IMUL   - A0		- ***ZOS** - Integer unsigned multiply
+	07h 01h - IMUL.b - A1		- ***ZOS** - Integer unsigned multiply byte-immediate
+	07h 02h - IMUL.w - A2		- ***ZOS** - Integer unsigned multiply word-immediate
+	07h 03h - IMUL.a - A3 		- ***ZOS** - Integer unsigned multiply addr-immediate
+
+	08h 00h - DIV    - A0		- ***ZOS** - Divide
+	08h 01h - DIV.b	 - A1		- ***ZOS** - Divide byte-immediate
+	08h 02h - DIV.w  - A2		- ***ZOS** - Divide word-immediate
+	08h 03h - DIV.a  - A3 		- ***ZOS** - Divide addr-immediate
+	
+	09h 00h - IDIV   - A0		- ***ZOS** - Integer unsigned divide
+	09h 01h - IDIV.b - A1		- ***ZOS** - Integer unsigned divide byte-immediate
+	09h 02h - IDIV.w - A2		- ***ZOS** - Integer unsigned divide word-immediate
+	09h 03h - IDIV.a - A3 		- ***ZOS** - Integer unsigned divide addr-immediate
+	
+	0Ah 00h - AND    - A0		- ***ZOS** - 
+	0Bh 00h - OR	 - A0		- ***ZOS** -
+	0Ch 00h - XOR	 - A0		- ***ZOS** -
+
+	0Dh 00h - NOT	 - S3		- ***ZOS** - 
+	0Eh 00h - INC	 - S3		- ***ZOS*C - Increment by one
+	0Fh 00h - DEC	 - S3		- ***ZOSB* - Decrement by one
+
+	10h 00h - CMP	 - A0		- LEG***** - Compare
+	10h 01h - CMP.b	 - A1		- LEG***** - Compare byte-immediate
+	10h 02h - CMP.w	 - A2		- LEG***** - Compare word-immediate
+	10h 03h - CMP.a	 - A3   	- LEG***** - Compare addr-immediate
+	
+	11h 00h - ICMP   - A0		- LEG***** - Integer unsigned compare
+	11h 01h - ICMP.b - A1		- LEG***** - Integer unsigned compare byte-immediate
+	11h 02h - ICMP.w - A2		- LEG***** - Integer unsigned compare word-immediate
+	11h 03h - ICMP.a - A3   	- LEG***** - Integer unsigned compare addr-immediate
+
+	12h 00h - JMP 	 - J0		- ******** - Branching
+	
+	13h 00h - PUSH	 - S2		- ******** - Push register to stack
+	14h 01h - POP 	 - S1		- ******** - Pop from stack to register
+	
+	15h 00h - CALL	 - S6		- ******** - Call the subroutine
+	16h 00h - RET	 - S0		- ******** - Return from subroutine
+	
+	17h 00h - MOV	 - D0		- ******** - Move (reg-reg) [Move]
+	17h 01h - LDI.b	 - D1B		- ******** - Write immediate (reg-imm | byte) [LDI - Load immediate]
+	17h 02h - LDI.w	 - D1W		- ******** - Write immediate (reg-imm | word) [LDI - Load immediate]
+	17h 03h - LDI.a	 - D1A		- ******** - Write immediate (reg-imm | addr) [LDI - Load immediate]
+	
+	18h 04h - STR.b	 - D2F		- ******** - Store byte (reg-mem | flat) [STR - Store in memory]
+	18h 05h - STR.b	 - D2S		- ******** - Store byte (reg-mem | base:offset) [STR - Store in memory]
+	18h 07h - STR.b	 - D2R		- ******** - Store byte (reg-mem | adreg) [STR - Store in memory]
+	
+	18h 44h - STR.w	 - D2F		- ******** - Store word (reg-mem | flat) [STR - Store in memory]
+	18h 45h - STR.w	 - D2S		- ******** - Store word (reg-mem | base:offset) [STR - Store in memory]
+	18h 47h - STR.w	 - D2R		- ******** - Store word (reg-mem | adreg) [STR - Store in memory]
+
+	18h 84h - STR.a	 - D2F		- ******** - Store address (reg-mem | flat) [STR - Store in memory]
+	18h 85h - STR.a	 - D2S		- ******** - Store address (reg-mem | base:offset) [STR - Store in memory]
+	18h 87h - STR.a	 - D2R		- ******** - Store address (reg-mem | adreg) [STR - Store in memory]
+	
+	19h 08h - LOD.b	 - D3F		- ******** - Load byte (mem-reg | flag) [LOAD - Load from memory]
+	19h 09h - LOD.b	 - D3S		- ******** - Load byte (mem-reg | base:offset) [LOAD - Load from memory]
+	19h 0Bh - LOD.b	 - D3R		- ******** - Load byte (mem-reg | adreg) [LOAD - Load from memory]
+	
+	19h 48h - LOD.w	 - D3F		- ******** - Load word (mem-reg | flag) [LOAD - Load from memory]
+	19h 49h - LOD.w	 - D3S		- ******** - Load word (mem-reg | base:offset) [LOAD - Load from memory]
+	19h 4Bh - LOD.w	 - D3R		- ******** - Load word (mem-reg | adreg) [LOAD - Load from memory]
+
+	19h 88h - LOD.a	 - D3F		- ******** - Load address (mem-reg | flag) [LOAD - Load from memory]
+	19h 89h - LOD.a	 - D3S		- ******** - Load address (mem-reg | base:offset) [LOAD - Load from memory]
+	19h 8Bh - LOD.a	 - D3R		- ******** - Load address (mem-reg | adreg) [LOAD - Load from memory]
+	
+	1Ah 00h - LSL 	 - A1		- ***ZOS** - Logical shift left
+	1Bh 00h - LSR	 - A1		- ***ZOS** - Logical shirt right
+	1Ch 00h - ASR 	 - A1		- ***ZOS** - Arithmetical shift right
+	1Dh 00h - ROL	 - A1		- ***ZOS** - Rotate left
+	1Eh 00h - ROR	 - A1		- ***ZOS** - Rotate right
+	
+	1Fh 00h - CLI	 - S0		- ******** - Clear interrupts
+	20h 00h - STI	 - S0		- ******** - Set interrupts
+	21h 00h - LWIM	 - S0		- ******** - Lock write instruction memory
+	22h 00h - UNLWIM - S0		- ******** - Unlock write instruction memory
+
+	23h 00h - INT 	 - S4		- ******** - Interrupt
+	24h 00h - IRET	 - S0		- ******** - Return from interrupt
+	25h 00h - WRINT  - A3       - ******** - Write interrupt to IV
+	
+	26h 00h - LOCK	 - S1		- ******** - Lock register
+	27h 00h - UNLOCK - S1		- ******** - Unlock register
+	
+Flags:
+	FLAG REGISTER:		FLAGS:
+	       				#ID - #CODE - #LOGIC - #NAME
+	00h - C				00h - UNC	- ALW 1  - Unconditional
+	01h - B				01h - CF	- C_OUT  - Carry flag
+	02h - S				02h - BF	- B_OUT	 - Borrow flag
+	03h - O				03h - SF	- SIGN   - Sign flag
+	04h - Z				04h - OF	- OVERFL - Overflow flag
+	05h - G				05h - ZF	- =0	 - Equals zero
+	06h - E				06h - NZ	- !=0	 - Not equals zero
+	07h - L 			07h - GR	- >		 - Greater than
+						08h - GE	- > || = - Greater or equals
+						09h - LS 	- <		 - Less than
+						0Ah - LE 	- < || = - Less or equals
+						0Bh - EQ	- =		 - Equals
+						0Ch - NE	- !=	 - Not equals
+Microcode:
+
+	MICROCODE FORMAT:
+	IN:
+	  OP      SF     
+	 ╒══════╕╒══════╕
+FF < XXXXXXXXXXXXXXXX < 00
+
+	OUT:
+	  IT   FM	   MD
+	 ╒═══╕╒══════╕╒═╕
+FF < XXXXXXXXXXXXXXXX < 00
+
+	OP - Opcode
+	SF - Suffix
+	IT - Instruction type
+	FM - Flag mask
+	MD - Mode
+
+	#NAME  - #OP #SF - #IT - #FM - #MD			#NAME  - #OP #SF - #IT - #FM - #MD
+	
+	NOP    - 00h 00h - 00h - 00h - 00h			RET	   - 16h 00h - 00h - 00h - 00h
+	HALT   - 01h 00h - 00h - 00h - 00h			MOV    - 17h 00h - 0Ch - 00h - 04h
+	ADD	   - 02h 00h - 07h - 1Dh - 04h			LDI.b  - 17h 01h - 0Dh - 00h - 00h
+	ADD.b  - 02h 01h - 08h - 1Dh - 00h			LDI.w  - 17h 02h - 0Eh - 00h - 01h
+	ADD.w  - 02h 02h - 09h - 1Dh - 01h			LDI.a  - 17h 03h - 0Fh - 00h - 02h
+	ADD.a  - 02h 03h - 0Ah - 1Dh - 02h			STR.b  - 18h 04h - 10h - 00h - 00h
+	ADC	   - 03h 00h - 07h - 1Dh - 04h			STR.b  - 18h 05h - 11h - 00h - 00h
+	SUB	   - 04h 00h - 07h - 1Eh - 04h			STR.b  - 18h 07h - 13h - 00h - 00h
+	SUB.b  - 04h 01h - 08h - 1Eh - 00h			STR.w  - 18h 44h - 10h - 00h - 01h
+	SUB.w  - 04h 02h - 09h - 1Eh - 01h			STR.w  - 18h 45h - 11h - 00h - 01h
+	SUB.a  - 04h 03h - 0Ah - 1Eh - 02h			STR.w  - 18h 47h - 13h - 00h - 01h
+	SBB    - 05h 00h - 07h - 1Eh - 04h			STR.a  - 18h 84h - 10h - 00h - 02h
+	MUL	   - 06h 00h - 07h - 1Ch - 04h			STR.a  - 18h 85h - 11h - 00h - 02h
+	MUL.b  - 06h 01h - 08h - 1Ch - 00h			STR.a  - 18h 87h - 13h - 00h - 02h
+	MUL.w  - 06h 02h - 09h - 1Ch - 01h			LOD.b  - 19h 08h - 14h - 00h - 00h
+	MUL.a  - 06h 03h - 0Ah - 1Ch - 02h			LOD.b  - 19h 09h - 15h - 00h - 00h
+	IMUL   - 07h 00h - 07h - 1Ch - 04h			LOD.b  - 19h 0Bh - 17h - 00h - 00h
+	IMUL.b - 07h 01h - 08h - 1Ch - 00h			LOD.w  - 19h 48h - 14h - 00h - 01h
+	IMUL.w - 07h 02h - 09h - 1Ch - 01h			LOD.w  - 19h 49h - 15h - 00h - 01h
+	IMUL.a - 07h 03h - 0Ah - 1Ch - 02h			LOD.w  - 19h 4Bh - 17h - 00h - 01h
+	DIV	   - 08h 00h - 07h - 1Ch - 04h			LOD.a  - 19h 88h - 14h - 00h - 02h
+	DIV.b  - 08h 01h - 08h - 1Ch - 00h			LOD.a  - 19h 89h - 15h - 00h - 02h
+	DIV.w  - 08h 02h - 09h - 1Ch - 01h			LOD.a  - 19h 8Bh - 17h - 00h - 02h
+	DIV.a  - 08h 03h - 0Ah - 1Ch - 02h			LSL    - 1Ah 00h - 08h - 1Ch - 04h
+	IDIV   - 09h 00h - 07h - 1Ch - 04h			LSR    - 1Bh 00h - 08h - 1Ch - 04h
+	IDIV.b - 09h 01h - 08h - 1Ch - 00h			ASR    - 1Ch 00h - 08h - 1Ch - 04h
+	IDIV.w - 09h 02h - 09h - 1Ch - 01h			ROL    - 1Dh 00h - 08h - 1Ch - 04h
+	IDIV.a - 09h 03h - 0Ah - 1Ch - 02h			ROR	   - 1Eh 00h - 08h - 1Ch - 04h
+	AND    - 0Ah 00h - 07h - 1Ch - 04h			CLI    - 1Fh 00h - 00h - 00h - 00h
+	OR     - 0Bh 00h - 07h - 1Ch - 04h			STI    - 20h 00h - 00h - 00h - 00h
+	XOR	   - 0Ch 00h - 07h - 1Ch - 04h			INT	   - 23h 00h - 04h - 00h - 00h
+	NOT    - 0Dh 00h - 03h - 1Ch - 04h			IRET   - 24h 00h - 00h - 00h - 00h
+	INC	   - 0Eh 00h - 03h - 1Dh - 04h			WRINT  - 25h 00h - 0Ah - 00h - 00h
+	DEC	   - 0Fh 00h - 03h - 1Eh - 04h			LOCK   - 26h 00h - 01h - 00h - 00h
+	CMP	   - 10h 00h - 07h - E0h - 04h			UNLOCK - 27h 00h - 01h - 00h - 00h
+	CMP.b  - 10h 01h - 08h - E0h - 00h			
+	CMP.w  - 10h 02h - 09h - E0h - 01h			
+	CMP.a  - 10h 03h - 0Ah - E0h - 02h			
+	ICMP   - 11h 00h - 07h - E0h - 04h			
+	ICMP.b - 11h 01h - 08h - E0h - 00h			
+	ICMP.w - 11h 02h - 09h - E0h - 01h			
+	ICMP.a - 11h 03h - 0Ah - E0h - 02h			
+	JMP	   - 12h 00h - 0Bh - 00h - 00h			
+	PUSH   - 13h 00h - 02h - 00h - 02h
+	POP    - 14h 00h - 01h - 00h - 02h			
+	CALL   - 15h 00h - 06h - 00h - 02h
+	
+ALU/BSU Operations:
+	  #ID - #BIN - #NAME
+ALU - 00h - 0000 - ADD
+ALU - 01h - 0001 - SUB
+ALU - 02h - 0010 - MUL
+ALU - 03h - 0011 - DIV
+ALU - 04h - 0100 - AND
+ALU - 05h - 0101 - OR
+ALU - 06h - 0110 - XOR
+ALU - 07h - 0111 - NOT
+	  ----------------
+BSU - 08h - 1000 - LSL
+BSU - 09h - 1001 - LSR
+BSU - 0Ah - 1010 - ASR
+BSU - 0Bh - 1011 - ROL
+BSU - 0Ch - 1100 - ROR
