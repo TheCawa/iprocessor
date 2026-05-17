@@ -189,12 +189,12 @@ class Assembler:
             if len(parts) == 2:
                 base_reg = self.parse_register(parts[0])
                 offset_reg = self.parse_register(parts[1])
-                return ('S', 0x01, 5, (base_reg, offset_reg))
+                return ('S', 0x05, 5, (base_reg, offset_reg))
         if inner.upper() in REGISTERS:
             reg = self.parse_register(inner)
-            return ('R', 0x03, 4, reg)
+            return ('R', 0x07, 4, reg)
         addr = self.parse_operand(inner)
-        return ('F', 0x00, 6, addr)
+        return ('F', 0x04, 6, addr)
     def first_pass(self, lines: List[str]):
         address = self.org
         current_segment = 'text'
