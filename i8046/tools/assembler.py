@@ -78,13 +78,13 @@ OPCODES = {
     'LDI.W':    {'op': 0x17, 'sf': 0x02, 'type': 'D1W', 'len': 5},
     'LDI.A':    {'op': 0x17, 'sf': 0x03, 'type': 'D1A', 'len': 6},
 
-    'STR.B':    {'op': 0x18, 'sf': None, 'type': 'D2X', 'len': None},
-    'STR.W':    {'op': 0x18, 'sf': None, 'type': 'D2X', 'len': None},
-    'STR.A':    {'op': 0x18, 'sf': None, 'type': 'D2X', 'len': None},
+    'STR.B':    {'op': 0x18, 'sf': 0x07, 'type': 'D2X', 'len': None},
+    'STR.W':    {'op': 0x18, 'sf': 0x47, 'type': 'D2X', 'len': None},
+    'STR.A':    {'op': 0x18, 'sf': 0x87, 'type': 'D2X', 'len': None},
 
-    'LOD.B':    {'op': 0x19, 'sf': None, 'type': 'D3X', 'len': None},
-    'LOD.W':    {'op': 0x19, 'sf': None, 'type': 'D3X', 'len': None},
-    'LOD.A':    {'op': 0x19, 'sf': None, 'type': 'D3X', 'len': None},
+    'LOD.B':    {'op': 0x19, 'sf': 0x0B, 'type': 'D3X', 'len': None},
+    'LOD.W':    {'op': 0x19, 'sf': 0x4B, 'type': 'D3X', 'len': None},
+    'LOD.A':    {'op': 0x19, 'sf': 0x8B, 'type': 'D3X', 'len': None},
 
     'LSL':      {'op': 0x1A, 'sf': 0x00, 'type': 'A1', 'len': 4},
     'LSR':      {'op': 0x1B, 'sf': 0x00, 'type': 'A1', 'len': 4},
@@ -547,6 +547,7 @@ class Assembler:
                         mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
                         size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
                         sf = size_offset | (sf_offset + 0x08)  # LOD использует +8 для SF
++                       sf = size_offset | (sf_offset + 0x04)  # LOD = STR + 4
                         code[-1] = sf
 
                         if mode == 'F':  # Flat addressing - D3F
