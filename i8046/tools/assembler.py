@@ -402,8 +402,12 @@ class Assembler:
 
             instr = OPCODES[mnemonic]
             code.append(instr['op'])
-            code.append(instr['sf'])
-            address += 2
+            if instr['sf'] is not None:
+                code.append(instr['sf'])
+                address += 2
+            else:
+                code.append(0x00)
+                address += 2
 
             try:
                 if instr['type'] == 'S0':
