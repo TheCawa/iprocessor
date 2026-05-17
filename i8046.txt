@@ -56,6 +56,8 @@ Instruction types:
 	16h - D3SI  - 7B	  - <OP> <SF> <rD> <rB>:<Addr24>
 	17h - D3R	- 4B	  - <OP> <SF> <rD> <rA>
 	
+	18h - I0	- 6B	  - <OP> <-> <imm8> <imm24>
+	
 Instructions:
 	#OP #SF - #Name  - #InsType - #FlMask  - #Description
 	
@@ -238,7 +240,7 @@ FF < XXXXXXXXXXXXXXXX < 00
 	OR     - 0Bh 00h - 07h - 1Ch - 04h			STI    - 20h 00h - 00h - 00h - 00h
 	XOR	   - 0Ch 00h - 07h - 1Ch - 04h			INT	   - 23h 00h - 04h - 00h - 00h
 	NOT    - 0Dh 00h - 03h - 1Ch - 04h			IRET   - 24h 00h - 00h - 00h - 00h
-	INC	   - 0Eh 00h - 03h - 1Dh - 04h			WRINT  - 25h 00h - 0Ah - 00h - 00h
+	INC	   - 0Eh 00h - 03h - 1Dh - 04h			WRINT  - 25h 00h - 18h - 00h - 00h
 	DEC	   - 0Fh 00h - 03h - 1Eh - 04h			LOCK   - 26h 00h - 01h - 00h - 00h
 	CMP	   - 10h 00h - 07h - E0h - 04h			UNLOCK - 27h 00h - 01h - 00h - 00h
 	CMP.b  - 10h 01h - 08h - E0h - 00h			
