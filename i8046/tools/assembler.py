@@ -507,52 +507,65 @@ class Assembler:
                     address += 2
 
                 elif instr['type'] == 'D2X':  # STR с динамическим режимом адресации
-                    reg = self.parse_register(parts[1])
-                    mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
-                    size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
-                    sf = size_offset | sf_offset
-                    code[-1] = sf
+                    try:
+                        reg = self.parse_register(parts[1])
+                        mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
+                        size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
+                        sf = size_offset | sf_offset
+                        code[-1] = sf
 
-                    if mode == 'F':  # Flat addressing - D2F
-                        code.append(reg)
-                        code.append((data >> 16) & 0xFF)
-                        code.append((data >> 8) & 0xFF)
-                        code.append(data & 0xFF)
-                        address += 4
-                    elif mode == 'S':  # Segment:offset - D2S
-                        base_reg, offset_reg = data
-                        code.append(reg)
-                        code.append(base_reg)
-                        code.append(offset_reg)
-                        address += 3
-                    elif mode == 'R':  # Register - D2R
-                        code.append(reg)
-                        code.append(data)
-                        address += 2
+                        if mode == 'F':  # Flat addressing - D2F
+                            code.append(reg)
+                            code.append((data >> 16) & 0xFF)
+                            code.append((data >> 8) & 0xFF)
+                            code.append(data & 0xFF)
+                            address += 4
+                        elif mode == 'S':  # Segment:offset - D2S
+                            base_reg, offset_reg = data
+                            code.append(reg)
+                            code.append(base_reg)
+                            code.append(offset_reg)
+                            address += 3
+                        elif mode == 'R':  # Register - D2R
+                            code.append(reg)
+                            code.append(data)
+                            address += 2
+                    except Exception as e:
+                        # Откатить OP и SF
+                        code.pop()
+                        code.pop()
+                        address -= 2
+                        raise e
 
                 elif instr['type'] == 'D3X':  # LOD с динамическим режимом адресации
-                    reg = self.parse_register(parts[1])
-                    mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
-                    size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
-                    sf = size_offset | (sf_offset + 0x08)  # LOD использует +8 для SF
-                    code[-1] = sf
+                    try:
+                        reg = self.parse_register(parts[1])
+                        mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
+                        size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
+                        sf = size_offset | (sf_offset + 0x08)  # LOD использует +8 для SF
+                        code[-1] = sf
 
-                    if mode == 'F':  # Flat addressing - D3F
-                        code.append(reg)
-                        code.append((data >> 16) & 0xFF)
-                        code.append((data >> 8) & 0xFF)
-                        code.append(data & 0xFF)
-                        address += 4
-                    elif mode == 'S':  # Segment:offset - D3S
-                        base_reg, offset_reg = data
-                        code.append(reg)
-                        code.append(base_reg)
-                        code.append(offset_reg)
-                        address += 3
-                    elif mode == 'R':  # Register - D3R
-                        code.append(reg)
-                        code.append(data)
-                        address += 2
+                        if mode == 'F':  # Flat addressing - D3F
+                            code.append(reg)
+                            code.append((data >> 16) & 0xFF)
+                            code.append((data >> 8) & 0xFF)
+                            code.append(data & 0xFF)
+                            address += 4
+                        elif mode == 'S':  # Segment:offset - D3S
+                            base_reg, offset_reg = data
+                            code.append(reg)
+                            code.append(base_reg)
+                            code.append(offset_reg)
+                            address += 3
+                        elif mode == 'R':  # Register - D3R
+                            code.append(reg)
+                            code.append(data)
+                            address += 2
+                    except Exception as e:
+                        code.pop()
+                        code.pop()
+                        address -= 2
+                        raise e
 
                 elif instr['type'] == 'J0':  # JMP cond addr24
                     imm = self.parse_operand(parts[1])
