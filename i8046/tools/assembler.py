@@ -546,8 +546,7 @@ class Assembler:
                         reg = self.parse_register(parts[1])
                         mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
                         size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
-                        sf = size_offset | (sf_offset + 0x08)  # LOD использует +8 для SF
-+                       sf = size_offset | (sf_offset + 0x04)  # LOD = STR + 4
+                        sf = size_offset | (sf_offset + 0x04)  # LOD = STR + 4
                         code[-1] = sf
 
                         if mode == 'F':  # Flat addressing - D3F
