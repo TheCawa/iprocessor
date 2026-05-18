@@ -58,14 +58,33 @@ OPCODES = {
     'ICMP.W':   {'op': 0x11, 'sf': 0x02, 'type': 'A2', 'len': 5},
     'ICMP.A':   {'op': 0x11, 'sf': 0x03, 'type': 'A3', 'len': 6},
 
-    'JMP':      {'op': 0x12, 'sf': 0x00, 'type': 'J0', 'len': 6},
-    'JMP.UNC':  {'op': 0x12, 'sf': 0x00, 'type': 'J0', 'len': 6},
-    'JMP.EQ':   {'op': 0x12, 'sf': 0x0B, 'type': 'J0', 'len': 6},
-    'JMP.NE':   {'op': 0x12, 'sf': 0x0C, 'type': 'J0', 'len': 6},
-    'JMP.GR':   {'op': 0x12, 'sf': 0x07, 'type': 'J0', 'len': 6},
-    'JMP.GE':   {'op': 0x12, 'sf': 0x08, 'type': 'J0', 'len': 6},
-    'JMP.LS':   {'op': 0x12, 'sf': 0x09, 'type': 'J0', 'len': 6},
-    'JMP.LE':   {'op': 0x12, 'sf': 0x0A, 'type': 'J0', 'len': 6},
+    'JMP':      {'op': 0x12, 'sf': 0x00, 'cond': 0x00, 'type': 'J0', 'len': 6},
+    'JMP.UNC':  {'op': 0x12, 'sf': 0x00, 'cond': 0x00, 'type': 'J0', 'len': 6},
+    'JMP.C':    {'op': 0x12, 'sf': 0x00, 'cond': 0x01, 'type': 'J0', 'len': 6},
+    'JMP.B':    {'op': 0x12, 'sf': 0x00, 'cond': 0x02, 'type': 'J0', 'len': 6},
+    'JMP.S':    {'op': 0x12, 'sf': 0x00, 'cond': 0x03, 'type': 'J0', 'len': 6},
+    'JMP.O':    {'op': 0x12, 'sf': 0x00, 'cond': 0x04, 'type': 'J0', 'len': 6},
+    'JMP.Z':    {'op': 0x12, 'sf': 0x00, 'cond': 0x05, 'type': 'J0', 'len': 6},
+    'JMP.NZ':   {'op': 0x12, 'sf': 0x00, 'cond': 0x06, 'type': 'J0', 'len': 6},
+    'JMP.GR':   {'op': 0x12, 'sf': 0x00, 'cond': 0x07, 'type': 'J0', 'len': 6},
+    'JMP.GE':   {'op': 0x12, 'sf': 0x00, 'cond': 0x08, 'type': 'J0', 'len': 6},
+    'JMP.LS':   {'op': 0x12, 'sf': 0x00, 'cond': 0x09, 'type': 'J0', 'len': 6},
+    'JMP.LE':   {'op': 0x12, 'sf': 0x00, 'cond': 0x0A, 'type': 'J0', 'len': 6},
+    'JMP.EQ':   {'op': 0x12, 'sf': 0x00, 'cond': 0x0B, 'type': 'J0', 'len': 6},
+    'JMP.NE':   {'op': 0x12, 'sf': 0x00, 'cond': 0x0C, 'type': 'J0', 'len': 6},
+
+    'JC':       {'op': 0x12, 'sf': 0x00, 'cond': 0x01, 'type': 'J0', 'len': 6},
+    'JB':       {'op': 0x12, 'sf': 0x00, 'cond': 0x02, 'type': 'J0', 'len': 6},
+    'JS':       {'op': 0x12, 'sf': 0x00, 'cond': 0x03, 'type': 'J0', 'len': 6},
+    'JO':       {'op': 0x12, 'sf': 0x00, 'cond': 0x04, 'type': 'J0', 'len': 6},
+    'JZ':       {'op': 0x12, 'sf': 0x00, 'cond': 0x05, 'type': 'J0', 'len': 6},
+    'JNZ':      {'op': 0x12, 'sf': 0x00, 'cond': 0x06, 'type': 'J0', 'len': 6},
+    'JG':       {'op': 0x12, 'sf': 0x00, 'cond': 0x07, 'type': 'J0', 'len': 6},
+    'JGE':      {'op': 0x12, 'sf': 0x00, 'cond': 0x08, 'type': 'J0', 'len': 6},
+    'JL':       {'op': 0x12, 'sf': 0x00, 'cond': 0x09, 'type': 'J0', 'len': 6},
+    'JLE':      {'op': 0x12, 'sf': 0x00, 'cond': 0x0A, 'type': 'J0', 'len': 6},
+    'JE':       {'op': 0x12, 'sf': 0x00, 'cond': 0x0B, 'type': 'J0', 'len': 6},
+    'JNE':      {'op': 0x12, 'sf': 0x00, 'cond': 0x0C, 'type': 'J0', 'len': 6},
 
     'PUSH':     {'op': 0x13, 'sf': 0x00, 'type': 'S2', 'len': 3},
     'POP':      {'op': 0x14, 'sf': 0x00, 'type': 'S1', 'len': 3},
@@ -156,7 +175,6 @@ class Assembler:
             value = int(s, 10)
         if is_negative:
             value = -value
-
         return value
 
     def parse_register(self, s: str) -> int:
@@ -167,13 +185,10 @@ class Assembler:
 
     def parse_operand(self, s: str):
         s = s.strip().rstrip(',')
-
         if s.upper() in self.labels:
             return self.labels[s.upper()]
-
         if s.upper() in REGISTERS:
             return self.parse_register(s)
-
         try:
             return self.parse_number(s)
         except:
@@ -195,6 +210,7 @@ class Assembler:
             return ('R', 0x07, 4, reg)
         addr = self.parse_operand(inner)
         return ('F', 0x04, 6, addr)
+
     def first_pass(self, lines: List[str]):
         address = self.org
         current_segment = 'text'
@@ -203,7 +219,7 @@ class Assembler:
             line = line.split(';')[0].strip()
             if not line:
                 continue
-                
+
             if ':' in line:
                 label, rest = line.split(':', 1)
                 label = label.strip().upper()
@@ -211,6 +227,7 @@ class Assembler:
                 line = rest.strip()
                 if not line:
                     continue
+
             line_upper = line.upper()
             if line_upper in ['.TEXT', '.CODE']:
                 current_segment = 'text'
@@ -243,17 +260,14 @@ class Assembler:
                     address += len(data.split(','))
                 continue
             elif line.upper().startswith('.DW'):
-                # Word (2 байта на элемент)
                 data = line[3:].strip()
                 address += len(data.split(',')) * 2
                 continue
             elif line.upper().startswith('.DD'):
-                # Dword (4 байта на элемент)
                 data = line[3:].strip()
                 address += len(data.split(',')) * 4
                 continue
             elif line.upper().startswith('.DA'):
-                # Addr (3 байта на элемент)
                 data = line[3:].strip()
                 address += len(data.split(',')) * 3
                 continue
@@ -276,6 +290,7 @@ class Assembler:
         code = []
         address = self.org
         current_segment = 'text'
+
         for line_num, line in enumerate(lines, 1):
             original_line = line
             line = line.split(';')[0].strip()
@@ -286,6 +301,7 @@ class Assembler:
                 line = line.split(':', 1)[1].strip()
                 if not line:
                     continue
+
             line_upper = line.upper()
             if line_upper in ['.TEXT', '.CODE']:
                 current_segment = 'text'
@@ -348,7 +364,6 @@ class Assembler:
                             address += 1
                 continue
             elif line.upper().startswith('.DW'):
-                # Word (2 байта, little-endian)
                 data = line[3:].strip()
                 for word_str in data.split(','):
                     word_str = word_str.strip()
@@ -361,7 +376,6 @@ class Assembler:
                         address += 2
                 continue
             elif line.upper().startswith('.DD'):
-                # Dword (4 байта, little-endian)
                 data = line[3:].strip()
                 for dword_str in data.split(','):
                     dword_str = dword_str.strip()
@@ -376,7 +390,6 @@ class Assembler:
                         address += 4
                 continue
             elif line.upper().startswith('.DA'):
-                # Addr (3 байта, little-endian)
                 data = line[3:].strip()
                 for addr_str in data.split(','):
                     addr_str = addr_str.strip()
@@ -401,60 +414,57 @@ class Assembler:
                 continue
 
             instr = OPCODES[mnemonic]
+            # Emit OP + SF (SF = 00h for J0, actual condition emitted later)
             code.append(instr['op'])
-            if instr['sf'] is not None:
-                code.append(instr['sf'])
-                address += 2
-            else:
-                code.append(0x00)
-                address += 2
+            code.append(instr['sf'])
+            address += 2
 
             try:
                 if instr['type'] == 'S0':
                     pass
 
-                elif instr['type'] == 'S1':  # POP rD
+                elif instr['type'] == 'S1':
                     reg = self.parse_register(parts[1])
                     code.append(reg)
                     address += 1
 
-                elif instr['type'] == 'S2':  # PUSH rS
+                elif instr['type'] == 'S2':
                     reg = self.parse_register(parts[1])
                     code.append(reg)
                     address += 1
 
-                elif instr['type'] == 'S3':  # INC/DEC rS/D
+                elif instr['type'] == 'S3':
                     reg = self.parse_register(parts[1])
                     code.append(reg)
                     address += 1
 
-                elif instr['type'] == 'S4':  # INT imm8
+                elif instr['type'] == 'S4':
                     imm = self.parse_operand(parts[1])
                     code.append(imm & 0xFF)
                     address += 1
 
-                elif instr['type'] == 'S6':  # CALL imm24
+                elif instr['type'] == 'S6':
                     imm = self.parse_operand(parts[1])
                     code.append((imm >> 16) & 0xFF)
                     code.append((imm >> 8) & 0xFF)
                     code.append(imm & 0xFF)
                     address += 3
 
-                elif instr['type'] == 'A0':  # ADD rD, rS
+                elif instr['type'] == 'A0':
                     reg1 = self.parse_register(parts[1])
                     reg2 = self.parse_register(parts[2])
                     code.append(reg1)
                     code.append(reg2)
                     address += 2
 
-                elif instr['type'] == 'A1':  # ADD.b rD, imm8
+                elif instr['type'] == 'A1':
                     reg = self.parse_register(parts[1])
                     imm = self.parse_operand(parts[2])
                     code.append(reg)
                     code.append(imm & 0xFF)
                     address += 2
 
-                elif instr['type'] == 'A2':  # ADD.w rD, imm16
+                elif instr['type'] == 'A2':
                     reg = self.parse_register(parts[1])
                     imm = self.parse_operand(parts[2])
                     code.append(reg)
@@ -462,7 +472,7 @@ class Assembler:
                     code.append(imm & 0xFF)
                     address += 3
 
-                elif instr['type'] == 'A3':  # ADD.a rD, imm24
+                elif instr['type'] == 'A3':
                     reg = self.parse_register(parts[1])
                     imm = self.parse_operand(parts[2])
                     code.append(reg)
@@ -471,21 +481,21 @@ class Assembler:
                     code.append(imm & 0xFF)
                     address += 4
 
-                elif instr['type'] == 'D0':  # MOV rD, rS
+                elif instr['type'] == 'D0':
                     reg1 = self.parse_register(parts[1])
                     reg2 = self.parse_register(parts[2])
                     code.append(reg1)
                     code.append(reg2)
                     address += 2
 
-                elif instr['type'] == 'D1B':  # LDI.b rD, imm8
+                elif instr['type'] == 'D1B':
                     reg = self.parse_register(parts[1])
                     imm = self.parse_operand(parts[2])
                     code.append(reg)
                     code.append(imm & 0xFF)
                     address += 2
 
-                elif instr['type'] == 'D1W':  # LDI.w rD, imm16
+                elif instr['type'] == 'D1W':
                     reg = self.parse_register(parts[1])
                     imm = self.parse_operand(parts[2])
                     code.append(reg)
@@ -493,7 +503,7 @@ class Assembler:
                     code.append(imm & 0xFF)
                     address += 3
 
-                elif instr['type'] == 'D1A':  # LDI.a rD, imm24
+                elif instr['type'] == 'D1A':
                     reg = self.parse_register(parts[1])
                     imm = self.parse_operand(parts[2])
                     code.append(reg)
@@ -502,7 +512,7 @@ class Assembler:
                     code.append(imm & 0xFF)
                     address += 4
 
-                elif instr['type'] in ['D2R', 'D3R']:  # STR/LOD rS/D, [rA]
+                elif instr['type'] in ['D2R', 'D3R']:
                     reg1 = self.parse_register(parts[1])
                     reg2_str = parts[2].strip('[]')
                     reg2 = self.parse_register(reg2_str)
@@ -510,58 +520,55 @@ class Assembler:
                     code.append(reg2)
                     address += 2
 
-                elif instr['type'] == 'D2X':  # STR с динамическим режимом адресации
+                elif instr['type'] == 'D2X':
                     try:
                         reg = self.parse_register(parts[1])
                         mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
                         size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
                         sf = size_offset | sf_offset
                         code[-1] = sf
-
-                        if mode == 'F':  # Flat addressing - D2F
+                        if mode == 'F':
                             code.append(reg)
                             code.append((data >> 16) & 0xFF)
                             code.append((data >> 8) & 0xFF)
                             code.append(data & 0xFF)
                             address += 4
-                        elif mode == 'S':  # Segment:offset - D2S
+                        elif mode == 'S':
                             base_reg, offset_reg = data
                             code.append(reg)
                             code.append(base_reg)
                             code.append(offset_reg)
                             address += 3
-                        elif mode == 'R':  # Register - D2R
+                        elif mode == 'R':
                             code.append(reg)
                             code.append(data)
                             address += 2
                     except Exception as e:
-                        # Откатить OP и SF
                         code.pop()
                         code.pop()
                         address -= 2
                         raise e
 
-                elif instr['type'] == 'D3X':  # LOD с динамическим режимом адресации
+                elif instr['type'] == 'D3X':
                     try:
                         reg = self.parse_register(parts[1])
                         mode, sf_offset, length, data = self.parse_addressing_mode(parts[2])
                         size_offset = 0x00 if '.B' in mnemonic else (0x40 if '.W' in mnemonic else 0x80)
-                        sf = size_offset | (sf_offset + 0x04)  # LOD = STR + 4
+                        sf = size_offset | (sf_offset + 0x04)
                         code[-1] = sf
-
-                        if mode == 'F':  # Flat addressing - D3F
+                        if mode == 'F':
                             code.append(reg)
                             code.append((data >> 16) & 0xFF)
                             code.append((data >> 8) & 0xFF)
                             code.append(data & 0xFF)
                             address += 4
-                        elif mode == 'S':  # Segment:offset - D3S
+                        elif mode == 'S':
                             base_reg, offset_reg = data
                             code.append(reg)
                             code.append(base_reg)
                             code.append(offset_reg)
                             address += 3
-                        elif mode == 'R':  # Register - D3R
+                        elif mode == 'R':
                             code.append(reg)
                             code.append(data)
                             address += 2
@@ -571,14 +578,17 @@ class Assembler:
                         address -= 2
                         raise e
 
-                elif instr['type'] == 'J0':  # JMP cond addr24
+                elif instr['type'] == 'J0':
+                    # Format: <OP> <00> <COND> <Imm24>
+                    cond = instr.get('cond', 0x00)
                     imm = self.parse_operand(parts[1])
+                    code.append(cond)
                     code.append((imm >> 16) & 0xFF)
                     code.append((imm >> 8) & 0xFF)
                     code.append(imm & 0xFF)
-                    address += 3
+                    address += 4
 
-                elif instr['type'] == 'I0':  # WRINT imm8, imm24
+                elif instr['type'] == 'I0':
                     imm8 = self.parse_operand(parts[1])
                     imm24 = self.parse_operand(parts[2])
                     code.append(imm8 & 0xFF)
