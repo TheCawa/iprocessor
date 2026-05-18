@@ -78,13 +78,13 @@ OPCODES = {
     'LDI.W':    {'op': 0x17, 'sf': 0x02, 'type': 'D1W', 'len': 5},
     'LDI.A':    {'op': 0x17, 'sf': 0x03, 'type': 'D1A', 'len': 6},
 
-    'STR.B':    {'op': 0x18, 'sf': 0x07, 'type': 'D2X', 'len': None},
-    'STR.W':    {'op': 0x18, 'sf': 0x47, 'type': 'D2X', 'len': None},
-    'STR.A':    {'op': 0x18, 'sf': 0x87, 'type': 'D2X', 'len': None},
+    'STR.B':    {'op': 0x18, 'sf': 0x07, 'type': 'D2R', 'len': 4},
+    'STR.W':    {'op': 0x18, 'sf': 0x47, 'type': 'D2R', 'len': 4},
+    'STR.A':    {'op': 0x18, 'sf': 0x87, 'type': 'D2R', 'len': 4},
 
-    'LOD.B':    {'op': 0x19, 'sf': 0x0B, 'type': 'D3X', 'len': None},
-    'LOD.W':    {'op': 0x19, 'sf': 0x4B, 'type': 'D3X', 'len': None},
-    'LOD.A':    {'op': 0x19, 'sf': 0x8B, 'type': 'D3X', 'len': None},
+    'LOD.B':    {'op': 0x19, 'sf': 0x0B, 'type': 'D3R', 'len': 4},
+    'LOD.W':    {'op': 0x19, 'sf': 0x4B, 'type': 'D3R', 'len': 4},
+    'LOD.A':    {'op': 0x19, 'sf': 0x8B, 'type': 'D3R', 'len': 4},
 
     'LSL':      {'op': 0x1A, 'sf': 0x00, 'type': 'A1', 'len': 4},
     'LSR':      {'op': 0x1B, 'sf': 0x00, 'type': 'A1', 'len': 4},
