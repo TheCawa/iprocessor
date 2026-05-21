@@ -1,2 +1,2 @@
-python assembler.py code.asm
+python CASM.py code.asm
 pause
