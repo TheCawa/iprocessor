@@ -1,0 +1,4 @@
+LDI.b r0, 0x42
+ADD   r0, r0
+PUSH  r0
+HALT
