@@ -72,6 +72,13 @@ extern const uint64_t MODE_MASKS[];
 #define MASK_LEG    0xE0 // LEG*****
 #define MASK_ALL    0xFF
 
+#define VBUFFER_BASE      0x010000
+#define VBUFFER_SIZE      0x10000
+#define VBUFFER_WIDTH     80
+#define VBUFFER_HEIGHT    25
+#define VBUFFER_CELLS     (VBUFFER_WIDTH * VBUFFER_HEIGHT) // 2000
+#define VBUFFER_CELL_SIZE 2                                // char + attr
+
 // Condition codes for JMP
 typedef enum {
     COND_UNC = 0x00,
@@ -102,6 +109,7 @@ typedef struct {
     bool     irq_enabled;
     bool     imem_locked;
     bool     reg_locked[REG_COUNT];
+    bool     screen_dirty;
 } Cpu;
 
 // ==================== API ====================

@@ -5,18 +5,19 @@
 
 #ifdef _WIN32
     #include <ctype.h>
-    static int strcasecmp_win(const char* a, const char* b) {
-        while (*a && *b) {
-            int ca = tolower((unsigned char)*a);
-            int cb = tolower((unsigned char)*b);
-            if (ca != cb) return ca - cb;
-            a++; b++;
+    #ifndef strcasecmp
+        static int strcasecmp_win(const char* a, const char* b) {
+            while (*a && *b) {
+                int ca = tolower((unsigned char)*a);
+                int cb = tolower((unsigned char)*b);
+                if (ca != cb) return ca - cb;
+                a++; b++;
+            }
+            return tolower((unsigned char)*a) - tolower((unsigned char)*b);
         }
-        return tolower((unsigned char)*a) - tolower((unsigned char)*b);
-    }
-    #define strcasecmp strcasecmp_win
+        #define strcasecmp strcasecmp_win
+    #endif
 #endif
-
 const uint64_t MODE_MASKS[] = { 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF };
 
 // ==================== REGISTER ACCESS ====================
@@ -161,24 +162,30 @@ static uint32_t align_address(uint32_t addr, CpuMode mode) {
 }
 
 uint64_t cpu_read_mem(const Cpu *cpu, uint32_t addr, CpuMode mode) {
-    if (addr >= cpu->mem_size) { printf("[ERR] Mem OOB Read: 0x%06X\n", addr); return 0; }
+    if (addr >= cpu->mem_size) return 0;
     uint32_t aligned_addr = align_address(addr, mode);
     uint64_t val = 0;
     size_t bytes = (mode == MODE_ADDR) ? 3 : (1 << mode);
     if (bytes > 8) bytes = 8;
     
-    for (size_t i = 0; i < bytes; i++) val |= ((uint64_t)cpu->mem[aligned_addr + i]) << (i * 8);
+    // Big-endian: первый байт в памяти — самый старший
+    for (size_t i = 0; i < bytes; i++) {
+        val |= ((uint64_t)cpu->mem[aligned_addr + i]) << ((bytes - 1 - i) * 8);
+    }
     return val & MODE_MASKS[mode];
 }
 
 void cpu_write_mem(Cpu *cpu, uint32_t addr, uint64_t val, CpuMode mode) {
-    if (addr >= cpu->mem_size) { printf("[ERR] Mem OOB Write: 0x%06X\n", addr); return; }
+    if (addr >= cpu->mem_size) return;
+    if (addr >= VBUFFER_BASE && addr < VBUFFER_BASE + VBUFFER_SIZE) {
+        cpu->screen_dirty = true;
+    }
     size_t bytes = (mode == MODE_ADDR) ? 3 : (1 << mode);
     if (bytes > 8) bytes = 8;
     uint32_t aligned_addr = align_address(addr, mode);
     for (size_t i = 0; i < bytes; i++) {
         if (aligned_addr + i >= cpu->mem_size) continue;
-        cpu->mem[aligned_addr + i] = (val >> (i * 8)) & 0xFF;
+        cpu->mem[aligned_addr + i] = (val >> ((bytes - 1 - i) * 8)) & 0xFF;
     }
 }
 
@@ -550,6 +557,7 @@ void cpu_init(Cpu *cpu, uint8_t *mem, size_t size) {
     cpu->irq_enabled = true;
     cpu->mmio_base = (uint32_t)(size - 256);
     cpu->mmio_size = 256;
+    cpu->screen_dirty = false;
     cpu_reset(cpu);
 }
 
