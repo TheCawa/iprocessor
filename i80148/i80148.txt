@@ -363,3 +363,14 @@ Something about stack:
 	-# DEC - How much does SP decrease
 	-# IN/OUT - Where/from to deliver data from/to the stack
 	-# IOMD - Input or output
+	
+Something about IDTR:
+	#OP   - #ICBKUP - #ADDRESS
+	
+	INT   - IC+2    - IDTR + (imm8 << 2)
+	IRQ   - IC+0    - IDTR + (imm8 << 2)
+	
+	-# LEGEND:
+	-# OP - Operation
+	-# ICBKUP - IC Backup
+	-# ADDRESS - How is the ISR address calculated
