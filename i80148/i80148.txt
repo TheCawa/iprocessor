@@ -1,6 +1,6 @@
 
 	-# Byte order = BIG ENDIAN
-	-# Registers = 35
+	-# Registers = 36
 	-# Among them: 
 	-#	1 zero (r0), 
 	-#	21 GPR (7 Dword EX1-EX7, 7 Word X1-X7, 7 Byte XL1-XL7), 
@@ -9,6 +9,7 @@
 	-#	1 SP (Stack pointer) & 1 BP (Base pointer),
 	-#	2 Index registers (IX - Source, IY - Destination),
 	-#  8 Additional registers (A0-A7, can be used as address register, or additional GPRs).
+	-#  1 Interrupt descriptor table register (IDTR)
 	
 	-# Data address bus: 		 32 bit (4GB; 4096MB); 
 	-# Instructions address bus: 32 bit (4GB; 4096MB); 
@@ -29,7 +30,7 @@ Registers:
 	
 	16h - IC	19h - BP	1Ch - A0	1Fh - A3	22h - A6
 	17h - FL	1Ah - IX	1Dh - A1	20h - A4	23h - A7
-	18h - SP	1Bh - IY	1Eh - A2	21h - A5	
+	18h - SP	1Bh - IY	1Eh - A2	21h - A5	24h - IDTR
 	
 	Register file out ABI:
 	A - ALU_A, DATA_OUT
@@ -90,7 +91,7 @@ Instruction types:
 	0Bh - J0	- 6B	  - <OP> <COND> <imm32>
 	0Ch - J1 	- 3B	  - <OP> <COND> <rS>
 	
-	0Dh - I0	- 6B	  - <OP> <imm8> <imm32>
+  U 0Dh - I0	- 6B	  - <OP> <imm8> <imm32>
 	0Eh - H0 	- 3B	  - <OP> <rS/D> <disp8>
 	
 	0Fh - D0	- 4B	  - <OP> <SF> <rD> <rS>
@@ -234,8 +235,7 @@ Instructions:
 	23h 0Ch - LOD.DW  - D3R      - -------- - Load dword (Register; reg-mem)
 	23h 0Dh - LOD.DW  - D3SD     - -------- - Load dword (Segment-displacement; reg-mem)
 	23h 0Eh - LOD.DW  - D3RD     - -------- - Load dword (Register-displacement; reg-mem)
-	
-	24h     - WRINT   - I0       - -------- - Write interrupt
+
 	25h     - INT     - S4       - -------- - Interrupt
 	26h     - IRET    - S0       - -------- - Return from interrupt
 	27h     - CLI     - S0       - -------- - Disable interrupts
