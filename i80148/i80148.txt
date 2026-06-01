@@ -18,7 +18,7 @@
 	-# Input instructions bus: 	 64 bit (8 Bytes);
 	-# Memory model: 			 Flat;
 	-# Memory addressing modes:  Flat (imm32), Index (Base:Offset), Indirect (reg), 
-								 Index-disp (Base:Offset:disp), Relative-disp (Base:Offset:disp);
+								 Index-disp (Base:Offset:disp), Indirect-disp (reg:disp);
 	-# Insts. addressing modes:  Flag (IC=imm32), Relative (IC+imm32), Indirect (IC=reg).
 
 Registers:
@@ -282,11 +282,11 @@ MICROCODE:
 	CMP.b    - 1Ch 01h - 08h FEh 00h			ICMP.b   - 1Dh 01h - 08h FEh 00h			LDI.w    - 21h 02h - 11h 00h 01h
 	CMP.w    - 1Ch 02h - 09h FEh 01h			ICMP.w   - 1Dh 02h - 09h FEh 01h			LDI.dw   - 21h 03h - 12h 00h 02h
 	CMP.dw   - 1Ch 03h - 0Ah FEh 02h			ICMP.dw  - 1Dh 03h - 0Ah FEh 02h
-																							WRINT    - 24h     - 0Dh 00h 02h
-	REM	     - 29h 00h - 07h 1Ch 04h			IREM	 - 2Ah 00h - 07h 1Ch 04h			INT      - 25h     - 04h 00h 00h
-	REM.b    - 29h 01h - 08h 1Ch 00h			IREM.b   - 2Ah 01h - 08h 1Ch 00h			IRET     - 26h     - 00h 00h 00h
-	REM.w    - 29h 02h - 09h 1Ch 01h			IREM.w   - 2Ah 02h - 09h 1Ch 01h			CLI      - 27h     - 00h 00h 00h
-	REM.dw   - 29h 03h - 0Ah 1Ch 02h			IREM.dw  - 2Ah 03h - 0Ah 1Ch 02h			STI      - 28h     - 00h 00h 00h
+																							INT      - 25h     - 04h 00h 00h
+	REM	     - 29h 00h - 07h 1Ch 04h			IREM	 - 2Ah 00h - 07h 1Ch 04h			IRET     - 26h     - 00h 00h 00h
+	REM.b    - 29h 01h - 08h 1Ch 00h			IREM.b   - 2Ah 01h - 08h 1Ch 00h			CLI      - 27h     - 00h 00h 00h
+	REM.w    - 29h 02h - 09h 1Ch 01h			IREM.w   - 2Ah 02h - 09h 1Ch 01h			STI      - 28h     - 00h 00h 00h
+	REM.dw   - 29h 03h - 0Ah 1Ch 02h			IREM.dw  - 2Ah 03h - 0Ah 1Ch 02h			
 	
 	STR.b    - 22h 00h - 13h 00h 00h			LOD.b    - 23h 00h - 18h 00h 00h
 	STR.b    - 22h 01h - 14h 00h 00h			LOD.b    - 23h 01h - 19h 00h 00h
