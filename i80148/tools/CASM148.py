@@ -107,15 +107,6 @@ OPCODES = {
     'LOD.DW': {'op': 0x23, 'sf': 0x0A, 'type': 'LOD', 'len': 'var'}
 }
 
-def get_mem_mode_and_len(operand):
-    op = operand.strip().strip('[]')
-    if ':' in op:
-        if '+' in op or '-' in op: return 'SD', 6
-        else: return 'S', 5
-    elif '+' in op or '-' in op: return 'RD', 5
-    elif op.upper() in REGISTERS: return 'R', 4
-    else: return 'F', 7
-
 def emit_imm(code, val, size):
     if size == 8:
         code.append(val & 0xFF)
@@ -147,13 +138,41 @@ class Assembler:
         try: return self.parse_number(s)
         except: return 0
 
+    def get_mem_mode_and_len(self, operand):
+        op = operand.strip().strip('[]')
+        if ':' in op:
+            if '+' in op or '-' in op: return 'SD', 6
+            else: return 'S', 5
+        
+        # Умный парсинг: считаем регистры и числа внутри скобок
+        expr = op.replace('-', '+-')
+        parts = [p.strip() for p in expr.split('+') if p.strip()]
+        
+        regs = []
+        has_imm = False
+        
+        for p in parts:
+            if p.upper() in REGISTERS:
+                regs.append(p.upper())
+            else:
+                has_imm = True
+                
+        if len(regs) == 2:
+            if has_imm: return 'SD', 6  # [r1 + r2 + disp]
+            else: return 'S', 5        # [r1 + r2]
+        elif len(regs) == 1:
+            if has_imm: return 'RD', 5  # [r1 + disp]
+            else: return 'R', 4        # [r1]
+        else:
+            return 'F', 7              # [imm32]
+
     def get_instr_len(self, mnemonic, operands):
         if mnemonic not in OPCODES: return 0
         info = OPCODES[mnemonic]
         t = info['type']
         if t in ['STR', 'LOD']:
             if len(operands) > 1:
-                mode, l = get_mem_mode_and_len(operands[1])
+                mode, l = self.get_mem_mode_and_len(operands[1])
                 return l
             return 0
         return info['len']
@@ -166,23 +185,41 @@ class Assembler:
         elif mode == 'R':
             return [REGISTERS[op.upper()]]
         elif mode == 'S':
-            parts = op.split(':')
-            return [REGISTERS[parts[0].strip().upper()], REGISTERS[parts[1].strip().upper()]]
+            if ':' in op:
+                parts = op.split(':')
+                return [REGISTERS[parts[0].strip().upper()], REGISTERS[parts[1].strip().upper()]]
+            else:
+                expr = op.replace('-', '+-')
+                parts = [p.strip() for p in expr.split('+') if p.strip()]
+                regs = [p.upper() for p in parts if p.upper() in REGISTERS]
+                return [REGISTERS[regs[0]], REGISTERS[regs[1]]]
         elif mode == 'SD':
-            m = re.match(r'([A-Za-z0-9]+)\s*:\s*([A-Za-z0-9]+)\s*([+-])\s*(.+)', op)
-            if m:
-                rB = REGISTERS[m.group(1).upper()]
-                rA = REGISTERS[m.group(2).upper()]
-                sign = 1 if m.group(3) == '+' else -1
-                disp = self.parse_operand(m.group(4)) * sign
-                return [rB, rA, disp & 0xFF]
+            if ':' in op:
+                m = re.match(r'([A-Za-z0-9]+)\s*:\s*([A-Za-z0-9]+)\s*([+-])\s*(.+)', op)
+                if m:
+                    rB = REGISTERS[m.group(1).upper()]
+                    rA = REGISTERS[m.group(2).upper()]
+                    sign = 1 if m.group(3) == '+' else -1
+                    disp = self.parse_operand(m.group(4)) * sign
+                    return [rB, rA, disp & 0xFF]
+            else:
+                expr = op.replace('-', '+-')
+                parts = [p.strip() for p in expr.split('+') if p.strip()]
+                regs = []
+                disp = 0
+                for p in parts:
+                    if p.upper() in REGISTERS: regs.append(p.upper())
+                    else: disp += self.parse_operand(p)
+                return [REGISTERS[regs[0]], REGISTERS[regs[1]], disp & 0xFF]
         elif mode == 'RD':
-            m = re.match(r'([A-Za-z0-9]+)\s*([+-])\s*(.+)', op)
-            if m:
-                rA = REGISTERS[m.group(1).upper()]
-                sign = 1 if m.group(2) == '+' else -1
-                disp = self.parse_operand(m.group(3)) * sign
-                return [rA, disp & 0xFF]
+            expr = op.replace('-', '+-')
+            parts = [p.strip() for p in expr.split('+') if p.strip()]
+            reg = None
+            disp = 0
+            for p in parts:
+                if p.upper() in REGISTERS: reg = p.upper()
+                else: disp += self.parse_operand(p)
+            return [REGISTERS[reg], disp & 0xFF]
         return []
 
     def calc_data_size(self, data_str, unit_size):
@@ -290,8 +327,7 @@ class Assembler:
                         i += 1
             else:
                 val = self.parse_operand(item)
-                if unit_size == 1:
-                    code.append(val & 0xFF)
+                if unit_size == 1: code.append(val & 0xFF)
                 elif unit_size == 2:
                     code.append((val >> 8) & 0xFF)
                     code.append(val & 0xFF)
@@ -326,20 +362,16 @@ class Assembler:
                 addr = self.parse_number(parts[1])
                 continue
             elif mnemonic == '.DB':
-                raw_data = line[3:].strip()
-                addr += self.calc_data_size(raw_data, 1)
+                addr += self.calc_data_size(line[3:].strip(), 1)
                 continue
             elif mnemonic == '.DW':
-                raw_data = line[3:].strip()
-                addr += self.calc_data_size(raw_data, 2)
+                addr += self.calc_data_size(line[3:].strip(), 2)
                 continue
             elif mnemonic == '.DD':
-                raw_data = line[3:].strip()
-                addr += self.calc_data_size(raw_data, 4)
+                addr += self.calc_data_size(line[3:].strip(), 4)
                 continue
             elif mnemonic == '.DA':
-                raw_data = line[3:].strip()
-                addr += self.calc_data_size(raw_data, 3)
+                addr += self.calc_data_size(line[3:].strip(), 3)
                 continue
 
             operands = parts[1:]
@@ -351,6 +383,7 @@ class Assembler:
 
     def second_pass(self, lines):
         code = []
+        current_addr = 0
         for line in lines:
             line = line.split(';')[0].strip()
             if not line: continue
@@ -366,22 +399,27 @@ class Assembler:
             operands = parts[1:]
             
             if mnemonic == '.ORG':
+                current_addr = self.parse_number(parts[1])
                 continue
             elif mnemonic == '.DB':
                 raw_data = line[3:].strip()
                 self.emit_data(code, raw_data, 1)
+                current_addr += self.calc_data_size(raw_data, 1)
                 continue
             elif mnemonic == '.DW':
                 raw_data = line[3:].strip()
                 self.emit_data(code, raw_data, 2)
+                current_addr += self.calc_data_size(raw_data, 2)
                 continue
             elif mnemonic == '.DD':
                 raw_data = line[3:].strip()
                 self.emit_data(code, raw_data, 4)
+                current_addr += self.calc_data_size(raw_data, 4)
                 continue
             elif mnemonic == '.DA':
                 raw_data = line[3:].strip()
                 self.emit_data(code, raw_data, 3)
+                current_addr += self.calc_data_size(raw_data, 3)
                 continue
 
             base_mnem = mnemonic.split('.')[0]
@@ -401,40 +439,67 @@ class Assembler:
                 code.append(info['sf'])
                 
             t = info['type']
+            instr_len = 0
             
-            if t == 'S0': pass
-            elif t == 'S1': code.append(REGISTERS[operands[0].upper()])
-            elif t == 'S2': code.append(REGISTERS[operands[0].upper()])
-            elif t == 'S3': code.append(REGISTERS[operands[0].upper()])
-            elif t == 'S4': code.append(self.parse_operand(operands[0]) & 0xFF)
-            elif t == 'S6': emit_imm(code, self.parse_operand(operands[0]), 32)
+            if t == 'S0': 
+                instr_len = 1
+            elif t == 'S1': 
+                code.append(REGISTERS[operands[0].upper()])
+                instr_len = 2
+            elif t == 'S2': 
+                code.append(REGISTERS[operands[0].upper()])
+                instr_len = 2
+            elif t == 'S3': 
+                code.append(REGISTERS[operands[0].upper()])
+                instr_len = 2
+            elif t == 'S4': 
+                code.append(self.parse_operand(operands[0]) & 0xFF)
+                instr_len = 2
+            elif t == 'S6':
+                target_addr = self.parse_operand(operands[0])
+                if mnemonic == 'CALL':
+                    ic_after = current_addr + 5
+                    val = target_addr - ic_after
+                else: # CLABS
+                    val = target_addr
+                emit_imm(code, val, 32)
+                instr_len = 5
             elif t == 'H0': 
                 code.append(REGISTERS[operands[0].upper()])
                 code.append(self.parse_operand(operands[1]) & 0xFF)
+                instr_len = 3
             elif t == 'A0': 
                 code.append(REGISTERS[operands[0].upper()])
                 code.append(REGISTERS[operands[1].upper()])
+                instr_len = 4
             elif t == 'A1': 
                 code.append(REGISTERS[operands[0].upper()])
                 emit_imm(code, self.parse_operand(operands[1]), 8)
+                instr_len = 4
             elif t == 'A2': 
                 code.append(REGISTERS[operands[0].upper()])
                 emit_imm(code, self.parse_operand(operands[1]), 16)
+                instr_len = 5
             elif t == 'A3': 
                 code.append(REGISTERS[operands[0].upper()])
                 emit_imm(code, self.parse_operand(operands[1]), 32)
+                instr_len = 7
             elif t == 'D0': 
                 code.append(REGISTERS[operands[0].upper()])
                 code.append(REGISTERS[operands[1].upper()])
+                instr_len = 4
             elif t == 'D1B': 
                 code.append(REGISTERS[operands[0].upper()])
                 emit_imm(code, self.parse_operand(operands[1]), 8)
+                instr_len = 4
             elif t == 'D1W': 
                 code.append(REGISTERS[operands[0].upper()])
                 emit_imm(code, self.parse_operand(operands[1]), 16)
+                instr_len = 5
             elif t == 'D1DW': 
                 code.append(REGISTERS[operands[0].upper()])
                 emit_imm(code, self.parse_operand(operands[1]), 32)
+                instr_len = 7
             elif t == 'J0':
                 c = cond if cond is not None else 0x00
                 imm_str = operands[0]
@@ -442,7 +507,15 @@ class Assembler:
                     c = CONDS.get(operands[0].upper(), 0x00)
                     imm_str = operands[1]
                 code.append(c)
-                emit_imm(code, self.parse_operand(imm_str), 32)
+                
+                target_addr = self.parse_operand(imm_str)
+                if mnemonic == 'JMP':
+                    ic_after = current_addr + 6
+                    val = target_addr - ic_after
+                else: # JMA
+                    val = target_addr
+                emit_imm(code, val, 32)
+                instr_len = 6
             elif t == 'J1':
                 c = cond if cond is not None else 0x00
                 reg_str = operands[0]
@@ -451,13 +524,17 @@ class Assembler:
                     reg_str = operands[1]
                 code.append(c)
                 code.append(REGISTERS[reg_str.upper()])
+                instr_len = 3
             elif t in ['STR', 'LOD']:
-                mode, l = get_mem_mode_and_len(operands[1])
+                mode, l = self.get_mem_mode_and_len(operands[1])
                 sf_offset = {'F':0, 'S':1, 'R':2, 'SD':3, 'RD':4}[mode]
                 code[-1] += sf_offset
                 code.append(REGISTERS[operands[0].upper()])
                 data = self.parse_mem_data(operands[1], mode)
                 code.extend(data)
+                instr_len = l
+                
+            current_addr += instr_len
         return code
 
     def assemble(self, source):
