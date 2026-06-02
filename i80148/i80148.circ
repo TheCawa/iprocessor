@@ -4045,6 +4045,42 @@
     <comp lib="0" loc="(7970,2530)" name="Pull Resistor">
       <a name="facing" val="east"/>
     </comp>
+    <comp lib="0" loc="(8000,3770)" name="Splitter">
+      <a name="appear" val="center"/>
+      <a name="bit1" val="0"/>
+      <a name="bit10" val="none"/>
+      <a name="bit11" val="none"/>
+      <a name="bit12" val="none"/>
+      <a name="bit13" val="none"/>
+      <a name="bit14" val="none"/>
+      <a name="bit15" val="none"/>
+      <a name="bit16" val="none"/>
+      <a name="bit17" val="none"/>
+      <a name="bit18" val="none"/>
+      <a name="bit19" val="none"/>
+      <a name="bit2" val="0"/>
+      <a name="bit20" val="none"/>
+      <a name="bit21" val="none"/>
+      <a name="bit22" val="none"/>
+      <a name="bit23" val="none"/>
+      <a name="bit24" val="none"/>
+      <a name="bit25" val="none"/>
+      <a name="bit26" val="none"/>
+      <a name="bit27" val="none"/>
+      <a name="bit28" val="none"/>
+      <a name="bit29" val="none"/>
+      <a name="bit3" val="0"/>
+      <a name="bit30" val="none"/>
+      <a name="bit31" val="none"/>
+      <a name="bit4" val="0"/>
+      <a name="bit5" val="0"/>
+      <a name="bit6" val="0"/>
+      <a name="bit7" val="0"/>
+      <a name="bit8" val="none"/>
+      <a name="bit9" val="none"/>
+      <a name="fanout" val="1"/>
+      <a name="incoming" val="32"/>
+    </comp>
     <comp lib="0" loc="(8010,2420)" name="Tunnel">
       <a name="facing" val="north"/>
       <a name="label" val="SPOUTIC"/>
@@ -4060,6 +4096,9 @@
       <a name="facing" val="north"/>
       <a name="fanout" val="1"/>
       <a name="incoming" val="3"/>
+    </comp>
+    <comp lib="0" loc="(8060,3770)" name="Bit Extender">
+      <a name="out_width" val="32"/>
     </comp>
     <comp lib="0" loc="(8070,2500)" name="Splitter">
       <a name="bit2" val="none"/>
@@ -7611,7 +7650,7 @@
     <wire from="(7990,3260)" to="(7990,3380)"/>
     <wire from="(7990,3260)" to="(8030,3260)"/>
     <wire from="(7990,3380)" to="(7990,3770)"/>
-    <wire from="(7990,3770)" to="(8160,3770)"/>
+    <wire from="(7990,3770)" to="(8000,3770)"/>
     <wire from="(8010,2850)" to="(8090,2850)"/>
     <wire from="(8030,2400)" to="(8120,2400)"/>
     <wire from="(8030,3280)" to="(8030,3290)"/>
@@ -7622,6 +7661,7 @@
     <wire from="(8050,3350)" to="(8440,3350)"/>
     <wire from="(8060,2390)" to="(8060,2430)"/>
     <wire from="(8060,3250)" to="(8120,3250)"/>
+    <wire from="(8060,3770)" to="(8160,3770)"/>
     <wire from="(8070,2500)" to="(8070,2510)"/>
     <wire from="(8070,2520)" to="(8070,3880)"/>
     <wire from="(8080,2340)" to="(8110,2340)"/>
