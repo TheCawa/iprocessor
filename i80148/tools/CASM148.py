@@ -138,25 +138,80 @@ class Assembler:
         try: return self.parse_number(s)
         except: return 0
 
+    def parse_operands(self, s):
+        """Корректно разбивает строку на операнды, учитывая квадратные скобки и строки."""
+        operands = []
+        current = ""
+        in_brackets = 0
+        in_string = False
+        quote_char = None
+        escape = False
+
+        for char in s:
+            if escape:
+                current += char
+                escape = False
+                continue
+            if char == '\\':
+                current += char
+                escape = True
+                continue
+            if char in ('"', "'"):
+                if not in_string:
+                    in_string = True
+                    quote_char = char
+                elif quote_char == char:
+                    in_string = False
+                    quote_char = None
+                current += char
+                continue
+            if char == '[' and not in_string:
+                in_brackets += 1
+                current += char
+                continue
+            if char == ']' and not in_string:
+                in_brackets -= 1
+                current += char
+                continue
+            if char == ',' and not in_brackets and not in_string:
+                operands.append(current.strip())
+                current = ""
+                continue
+            if char.isspace() and not in_brackets and not in_string:
+                if current.strip():
+                    operands.append(current.strip())
+                    current = ""
+                continue
+            current += char
+
+        if current.strip():
+            operands.append(current.strip())
+
+        return operands
+
     def get_mem_mode_and_len(self, operand):
-        op = operand.strip().strip('[]')
-        if ':' in op:
-            if '+' in op or '-' in op: return 'SD', 6
+        op = operand.strip()
+        if not (op.startswith('[') and op.endswith(']')):
+            raise ValueError(f"Адрес в STR/LOD должен быть в квадратных скобках: {operand}")
+
+        inner = op[1:-1].strip()
+
+        if ':' in inner:
+            if '+' in inner or '-' in inner: return 'SD', 6
             else: return 'S', 5
-        
-        # Умный парсинг: считаем регистры и числа внутри скобок
-        expr = op.replace('-', '+-')
+
+        expr = inner.replace('-', '+-')
         parts = [p.strip() for p in expr.split('+') if p.strip()]
-        
+
         regs = []
         has_imm = False
-        
+
         for p in parts:
             if p.upper() in REGISTERS:
                 regs.append(p.upper())
             else:
                 has_imm = True
-                
+
         if len(regs) == 2:
             if has_imm: return 'SD', 6  # [r1 + r2 + disp]
             else: return 'S', 5        # [r1 + r2]
@@ -172,30 +227,35 @@ class Assembler:
         t = info['type']
         if t in ['STR', 'LOD']:
             if len(operands) > 1:
-                mode, l = self.get_mem_mode_and_len(operands[1])
-                return l
+                try:
+                    mode, l = self.get_mem_mode_and_len(operands[1])
+                    return l
+                except ValueError:
+                    return 0
             return 0
         return info['len']
 
     def parse_mem_data(self, operand, mode):
-        op = operand.strip().strip('[]')
+        op = operand.strip()
+        inner = op[1:-1].strip()
+
         if mode == 'F':
-            val = self.parse_operand(op)
+            val = self.parse_operand(inner)
             return [(val >> 24) & 0xFF, (val >> 16) & 0xFF, (val >> 8) & 0xFF, val & 0xFF]
         elif mode == 'R':
-            return [REGISTERS[op.upper()]]
+            return [REGISTERS[inner.upper()]]
         elif mode == 'S':
-            if ':' in op:
-                parts = op.split(':')
+            if ':' in inner:
+                parts = inner.split(':')
                 return [REGISTERS[parts[0].strip().upper()], REGISTERS[parts[1].strip().upper()]]
             else:
-                expr = op.replace('-', '+-')
+                expr = inner.replace('-', '+-')
                 parts = [p.strip() for p in expr.split('+') if p.strip()]
                 regs = [p.upper() for p in parts if p.upper() in REGISTERS]
                 return [REGISTERS[regs[0]], REGISTERS[regs[1]]]
         elif mode == 'SD':
-            if ':' in op:
-                m = re.match(r'([A-Za-z0-9]+)\s*:\s*([A-Za-z0-9]+)\s*([+-])\s*(.+)', op)
+            if ':' in inner:
+                m = re.match(r'([A-Za-z0-9]+)\s*:\s*([A-Za-z0-9]+)\s*([+-])\s*(.+)', inner)
                 if m:
                     rB = REGISTERS[m.group(1).upper()]
                     rA = REGISTERS[m.group(2).upper()]
@@ -203,7 +263,7 @@ class Assembler:
                     disp = self.parse_operand(m.group(4)) * sign
                     return [rB, rA, disp & 0xFF]
             else:
-                expr = op.replace('-', '+-')
+                expr = inner.replace('-', '+-')
                 parts = [p.strip() for p in expr.split('+') if p.strip()]
                 regs = []
                 disp = 0
@@ -212,7 +272,7 @@ class Assembler:
                     else: disp += self.parse_operand(p)
                 return [REGISTERS[regs[0]], REGISTERS[regs[1]], disp & 0xFF]
         elif mode == 'RD':
-            expr = op.replace('-', '+-')
+            expr = inner.replace('-', '+-')
             parts = [p.strip() for p in expr.split('+') if p.strip()]
             reg = None
             disp = 0
@@ -229,7 +289,7 @@ class Assembler:
         in_string = False
         quote_char = None
         escape = False
-        
+
         for char in data_str:
             if escape:
                 current += char
@@ -255,7 +315,7 @@ class Assembler:
             current += char
         if current.strip():
             items.append(current.strip())
-            
+
         for item in items:
             if not item: continue
             if (item.startswith('"') and item.endswith('"')) or (item.startswith("'") and item.endswith("'")):
@@ -280,7 +340,7 @@ class Assembler:
         in_string = False
         quote_char = None
         escape = False
-        
+
         for char in data_str:
             if escape:
                 current += char
@@ -306,7 +366,7 @@ class Assembler:
             current += char
         if current.strip():
             items.append(current.strip())
-            
+
         for item in items:
             if not item: continue
             if (item.startswith('"') and item.endswith('"')) or (item.startswith("'") and item.endswith("'")):
@@ -346,20 +406,26 @@ class Assembler:
         for line in lines:
             line = line.split(';')[0].strip()
             if not line: continue
-            
+
             match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)', line)
             if match:
                 label = match.group(1)
                 self.labels[label.upper()] = addr
                 line = match.group(2).strip()
                 if not line: continue
-            
-            parts = line.replace(',', ' ').split()
-            if not parts: continue
-            mnemonic = parts[0].upper()
-            
+
+            # Извлекаем мнемонику и операнды
+            mnem_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_\.]*)\s+(.*)', line)
+            if mnem_match:
+                mnemonic = mnem_match.group(1).upper()
+                rest = mnem_match.group(2)
+                operands = self.parse_operands(rest)
+            else:
+                mnemonic = line.upper()
+                operands = []
+
             if mnemonic == '.ORG':
-                addr = self.parse_number(parts[1])
+                addr = self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1])
                 continue
             elif mnemonic == '.DB':
                 addr += self.calc_data_size(line[3:].strip(), 1)
@@ -374,11 +440,10 @@ class Assembler:
                 addr += self.calc_data_size(line[3:].strip(), 3)
                 continue
 
-            operands = parts[1:]
             base_mnem = mnemonic.split('.')[0]
             if base_mnem in ['JMP', 'JMPR', 'JMA'] and mnemonic != base_mnem:
                 mnemonic = base_mnem
-            
+
             addr += self.get_instr_len(mnemonic, operands)
 
     def second_pass(self, lines):
@@ -387,19 +452,23 @@ class Assembler:
         for line in lines:
             line = line.split(';')[0].strip()
             if not line: continue
-            
+
             match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)', line)
             if match:
                 line = match.group(2).strip()
                 if not line: continue
-            
-            parts = line.replace(',', ' ').split()
-            if not parts: continue
-            mnemonic = parts[0].upper()
-            operands = parts[1:]
-            
+
+            mnem_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_\.]*)\s+(.*)', line)
+            if mnem_match:
+                mnemonic = mnem_match.group(1).upper()
+                rest = mnem_match.group(2)
+                operands = self.parse_operands(rest)
+            else:
+                mnemonic = line.upper()
+                operands = []
+
             if mnemonic == '.ORG':
-                current_addr = self.parse_number(parts[1])
+                current_addr = self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1])
                 continue
             elif mnemonic == '.DB':
                 raw_data = line[3:].strip()
@@ -432,15 +501,15 @@ class Assembler:
             if mnemonic not in OPCODES:
                 print(f"Unknown instruction: {mnemonic}")
                 continue
-                
+
             info = OPCODES[mnemonic]
             code.append(info['op'])
             if info['sf'] is not None:
                 code.append(info['sf'])
-                
+
             t = info['type']
             instr_len = 0
-            
+
             if t == 'S0': 
                 instr_len = 1
             elif t == 'S1': 
@@ -507,7 +576,7 @@ class Assembler:
                     c = CONDS.get(operands[0].upper(), 0x00)
                     imm_str = operands[1]
                 code.append(c)
-                
+
                 target_addr = self.parse_operand(imm_str)
                 if mnemonic == 'JMP':
                     ic_after = current_addr + 6
@@ -526,6 +595,15 @@ class Assembler:
                 code.append(REGISTERS[reg_str.upper()])
                 instr_len = 3
             elif t in ['STR', 'LOD']:
+                if len(operands) < 2:
+                    print(f"Not enough operands for {mnemonic}")
+                    continue
+
+                # Проверка скобок
+                if not (operands[1].startswith('[') and operands[1].endswith(']')):
+                    print(f"Error: Address in {mnemonic} must be in brackets: {operands[1]}")
+                    continue
+
                 mode, l = self.get_mem_mode_and_len(operands[1])
                 sf_offset = {'F':0, 'S':1, 'R':2, 'SD':3, 'RD':4}[mode]
                 code[-1] += sf_offset
@@ -533,7 +611,7 @@ class Assembler:
                 data = self.parse_mem_data(operands[1], mode)
                 code.extend(data)
                 instr_len = l
-                
+
             current_addr += instr_len
         return code
 
@@ -552,14 +630,14 @@ def main():
 
     asm = Assembler()
     code = asm.assemble(source)
-    
+
     out_file = 'output.bin'
     if '-o' in sys.argv:
         out_file = sys.argv[sys.argv.index('-o') + 1]
 
     with open(out_file, 'wb') as f:
         f.write(bytes(code))
-        
+
     print(f"{len(code)} bytes collected. Labels: {asm.labels}")
 
 if __name__ == '__main__':
