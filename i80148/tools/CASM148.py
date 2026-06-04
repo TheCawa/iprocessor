@@ -107,6 +107,8 @@ OPCODES = {
     'LOD.DW': {'op': 0x23, 'sf': 0x0A, 'type': 'LOD', 'len': 'var'}
 }
 
+SEGMENTS = ['text', 'data', 'bss']
+
 def emit_imm(code, val, size):
     if size == 8:
         code.append(val & 0xFF)
@@ -122,7 +124,23 @@ def emit_imm(code, val, size):
 class Assembler:
     def __init__(self):
         self.labels = {}
-        self.code = []
+        self.segments = {seg: {'addr': 0, 'code': []} for seg in SEGMENTS}
+        self.active_seg = 'text'
+
+    def cur_addr(self):
+        return self.segments[self.active_seg]['addr']
+
+    def set_addr(self, val):
+        self.segments[self.active_seg]['addr'] = val
+
+    def add_addr(self, delta):
+        self.segments[self.active_seg]['addr'] += delta
+
+    def append_code(self, byte):
+        self.segments[self.active_seg]['code'].append(byte)
+
+    def extend_code(self, bytes_list):
+        self.segments[self.active_seg]['code'].extend(bytes_list)
 
     def parse_number(self, s):
         s = s.strip()
@@ -139,7 +157,6 @@ class Assembler:
         except: return 0
 
     def parse_operands(self, s):
-        """Корректно разбивает строку на операнды, учитывая квадратные скобки и строки."""
         operands = []
         current = ""
         in_brackets = 0
@@ -213,13 +230,13 @@ class Assembler:
                 has_imm = True
 
         if len(regs) == 2:
-            if has_imm: return 'SD', 6  # [r1 + r2 + disp]
-            else: return 'S', 5        # [r1 + r2]
+            if has_imm: return 'SD', 6
+            else: return 'S', 5
         elif len(regs) == 1:
-            if has_imm: return 'RD', 5  # [r1 + disp]
-            else: return 'R', 4        # [r1]
+            if has_imm: return 'RD', 5
+            else: return 'R', 4
         else:
-            return 'F', 7              # [imm32]
+            return 'F', 7
 
     def get_instr_len(self, mnemonic, operands):
         if mnemonic not in OPCODES: return 0
@@ -334,7 +351,7 @@ class Assembler:
                 size += unit_size
         return size
 
-    def emit_data(self, code, data_str, unit_size):
+    def emit_data(self, data_str, unit_size):
         items = []
         current = ""
         in_string = False
@@ -375,34 +392,29 @@ class Assembler:
                 while i < len(s):
                     if s[i] == '\\' and i + 1 < len(s):
                         nxt = s[i+1]
-                        if nxt == 'n': code.append(0x0A)
-                        elif nxt == 'r': code.append(0x0D)
-                        elif nxt == 't': code.append(0x09)
-                        elif nxt == '0': code.append(0x00)
-                        elif nxt == '\\': code.append(ord('\\'))
-                        else: code.append(ord(nxt))
+                        if nxt == 'n': self.append_code(0x0A)
+                        elif nxt == 'r': self.append_code(0x0D)
+                        elif nxt == 't': self.append_code(0x09)
+                        elif nxt == '0': self.append_code(0x00)
+                        elif nxt == '\\': self.append_code(ord('\\'))
+                        else: self.append_code(ord(nxt))
                         i += 2
                     else:
-                        code.append(ord(s[i]))
+                        self.append_code(ord(s[i]))
                         i += 1
             else:
                 val = self.parse_operand(item)
-                if unit_size == 1: code.append(val & 0xFF)
+                if unit_size == 1: self.append_code(val & 0xFF)
                 elif unit_size == 2:
-                    code.append((val >> 8) & 0xFF)
-                    code.append(val & 0xFF)
-                elif unit_size == 3:
-                    code.append((val >> 16) & 0xFF)
-                    code.append((val >> 8) & 0xFF)
-                    code.append(val & 0xFF)
+                    self.append_code((val >> 8) & 0xFF)
+                    self.append_code(val & 0xFF)
                 elif unit_size == 4:
-                    code.append((val >> 24) & 0xFF)
-                    code.append((val >> 16) & 0xFF)
-                    code.append((val >> 8) & 0xFF)
-                    code.append(val & 0xFF)
+                    self.append_code((val >> 24) & 0xFF)
+                    self.append_code((val >> 16) & 0xFF)
+                    self.append_code((val >> 8) & 0xFF)
+                    self.append_code(val & 0xFF)
 
     def first_pass(self, lines):
-        addr = 0
         for line in lines:
             line = line.split(';')[0].strip()
             if not line: continue
@@ -410,12 +422,22 @@ class Assembler:
             match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(.*)', line)
             if match:
                 label = match.group(1)
-                self.labels[label.upper()] = addr
+                self.labels[label.upper()] = self.cur_addr()
                 line = match.group(2).strip()
                 if not line: continue
 
-            # Извлекаем мнемонику и операнды
-            mnem_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_\.]*)\s+(.*)', line)
+            up = line.upper()
+            if up == '.TEXT':
+                self.active_seg = 'text'
+                continue
+            elif up == '.DATA':
+                self.active_seg = 'data'
+                continue
+            elif up == '.BSS':
+                self.active_seg = 'bss'
+                continue
+
+            mnem_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_\.]*|\.[a-zA-Z]+)\s+(.*)', line)
             if mnem_match:
                 mnemonic = mnem_match.group(1).upper()
                 rest = mnem_match.group(2)
@@ -425,30 +447,25 @@ class Assembler:
                 operands = []
 
             if mnemonic == '.ORG':
-                addr = self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1])
+                self.set_addr(self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1]))
                 continue
             elif mnemonic == '.DB':
-                addr += self.calc_data_size(line[3:].strip(), 1)
+                self.add_addr(self.calc_data_size(line[3:].strip(), 1))
                 continue
             elif mnemonic == '.DW':
-                addr += self.calc_data_size(line[3:].strip(), 2)
+                self.add_addr(self.calc_data_size(line[3:].strip(), 2))
                 continue
             elif mnemonic == '.DD':
-                addr += self.calc_data_size(line[3:].strip(), 4)
-                continue
-            elif mnemonic == '.DA':
-                addr += self.calc_data_size(line[3:].strip(), 3)
+                self.add_addr(self.calc_data_size(line[3:].strip(), 4))
                 continue
 
             base_mnem = mnemonic.split('.')[0]
             if base_mnem in ['JMP', 'JMPR', 'JMA'] and mnemonic != base_mnem:
                 mnemonic = base_mnem
 
-            addr += self.get_instr_len(mnemonic, operands)
+            self.add_addr(self.get_instr_len(mnemonic, operands))
 
     def second_pass(self, lines):
-        code = []
-        current_addr = 0
         for line in lines:
             line = line.split(';')[0].strip()
             if not line: continue
@@ -458,7 +475,18 @@ class Assembler:
                 line = match.group(2).strip()
                 if not line: continue
 
-            mnem_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_\.]*)\s+(.*)', line)
+            up = line.upper()
+            if up == '.TEXT':
+                self.active_seg = 'text'
+                continue
+            elif up == '.DATA':
+                self.active_seg = 'data'
+                continue
+            elif up == '.BSS':
+                self.active_seg = 'bss'
+                continue
+
+            mnem_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_\.]*|\.[a-zA-Z]+)\s+(.*)', line)
             if mnem_match:
                 mnemonic = mnem_match.group(1).upper()
                 rest = mnem_match.group(2)
@@ -468,27 +496,22 @@ class Assembler:
                 operands = []
 
             if mnemonic == '.ORG':
-                current_addr = self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1])
+                self.set_addr(self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1]))
                 continue
             elif mnemonic == '.DB':
                 raw_data = line[3:].strip()
-                self.emit_data(code, raw_data, 1)
-                current_addr += self.calc_data_size(raw_data, 1)
+                self.emit_data(raw_data, 1)
+                self.add_addr(self.calc_data_size(raw_data, 1))
                 continue
             elif mnemonic == '.DW':
                 raw_data = line[3:].strip()
-                self.emit_data(code, raw_data, 2)
-                current_addr += self.calc_data_size(raw_data, 2)
+                self.emit_data(raw_data, 2)
+                self.add_addr(self.calc_data_size(raw_data, 2))
                 continue
             elif mnemonic == '.DD':
                 raw_data = line[3:].strip()
-                self.emit_data(code, raw_data, 4)
-                current_addr += self.calc_data_size(raw_data, 4)
-                continue
-            elif mnemonic == '.DA':
-                raw_data = line[3:].strip()
-                self.emit_data(code, raw_data, 3)
-                current_addr += self.calc_data_size(raw_data, 3)
+                self.emit_data(raw_data, 4)
+                self.add_addr(self.calc_data_size(raw_data, 4))
                 continue
 
             base_mnem = mnemonic.split('.')[0]
@@ -503,71 +526,71 @@ class Assembler:
                 continue
 
             info = OPCODES[mnemonic]
-            code.append(info['op'])
+            self.append_code(info['op'])
             if info['sf'] is not None:
-                code.append(info['sf'])
+                self.append_code(info['sf'])
 
             t = info['type']
             instr_len = 0
 
-            if t == 'S0': 
+            if t == 'S0':
                 instr_len = 1
-            elif t == 'S1': 
-                code.append(REGISTERS[operands[0].upper()])
+            elif t == 'S1':
+                self.append_code(REGISTERS[operands[0].upper()])
                 instr_len = 2
-            elif t == 'S2': 
-                code.append(REGISTERS[operands[0].upper()])
+            elif t == 'S2':
+                self.append_code(REGISTERS[operands[0].upper()])
                 instr_len = 2
-            elif t == 'S3': 
-                code.append(REGISTERS[operands[0].upper()])
+            elif t == 'S3':
+                self.append_code(REGISTERS[operands[0].upper()])
                 instr_len = 2
-            elif t == 'S4': 
-                code.append(self.parse_operand(operands[0]) & 0xFF)
+            elif t == 'S4':
+                self.append_code(self.parse_operand(operands[0]) & 0xFF)
                 instr_len = 2
             elif t == 'S6':
                 target_addr = self.parse_operand(operands[0])
                 if mnemonic == 'CALL':
-                    ic_after = current_addr + 5
+                    ic_after = self.cur_addr() + 5
                     val = target_addr - ic_after
                 else: # CLABS
                     val = target_addr
-                emit_imm(code, val, 32)
+                emit_imm(self.segments[self.active_seg]['code'], val, 32)
                 instr_len = 5
-            elif t == 'H0': 
-                code.append(REGISTERS[operands[0].upper()])
-                code.append(self.parse_operand(operands[1]) & 0xFF)
+            elif t == 'H0':
+                self.append_code(REGISTERS[operands[0].upper()])
+                self.append_code(self.parse_operand(operands[1]) & 0xFF)
                 instr_len = 3
-            elif t == 'A0': 
-                code.append(REGISTERS[operands[0].upper()])
-                code.append(REGISTERS[operands[1].upper()])
+            elif t == 'A0':
+                self.append_code(REGISTERS[operands[0].upper()])
+                self.append_code(REGISTERS[operands[1].upper()])
                 instr_len = 4
-            elif t == 'A1': 
-                code.append(REGISTERS[operands[0].upper()])
-                emit_imm(code, self.parse_operand(operands[1]), 8)
+            elif t == 'A1':
+                self.append_code(REGISTERS[operands[0].upper()])
+                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 8)
                 instr_len = 4
-            elif t == 'A2': 
-                code.append(REGISTERS[operands[0].upper()])
-                emit_imm(code, self.parse_operand(operands[1]), 16)
+            elif t == 'A2':
+                self.append_code(REGISTERS[operands[0].upper()])
+                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 16)
                 instr_len = 5
-            elif t == 'A3': 
-                code.append(REGISTERS[operands[0].upper()])
-                emit_imm(code, self.parse_operand(operands[1]), 32)
+            elif t == 'A3':
+                self.append_code(REGISTERS[operands[0].upper()])
+                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 32)
                 instr_len = 7
-            elif t == 'D0': 
-                code.append(REGISTERS[operands[0].upper()])
-                code.append(REGISTERS[operands[1].upper()])
+            elif t == 'D0':
+                self.append_code(REGISTERS[operands[0].upper()])
+                self.append_code(REGISTERS[operands[1].upper()])
                 instr_len = 4
-            elif t == 'D1B': 
-                code.append(REGISTERS[operands[0].upper()])
-                emit_imm(code, self.parse_operand(operands[1]), 8)
+            elif t == 'D1B':
+                self.append_code(REGISTERS[operands[0].upper()])
+                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 8)
                 instr_len = 4
-            elif t == 'D1W': 
-                code.append(REGISTERS[operands[0].upper()])
-                emit_imm(code, self.parse_operand(operands[1]), 16)
+            elif t == 'D1W':
+                self.append_code(REGISTERS[operands[0].upper()])
+                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 16)
                 instr_len = 5
-            elif t == 'D1DW': 
-                code.append(REGISTERS[operands[0].upper()])
-                emit_imm(code, self.parse_operand(operands[1]), 32)
+            elif t == 'D1DW':
+                self.append_code(REGISTERS[operands[0].upper()])
+                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 32)
                 instr_len = 7
             elif t == 'J0':
                 c = cond if cond is not None else 0x00
@@ -575,15 +598,15 @@ class Assembler:
                 if c == 0x00 and len(operands) > 1:
                     c = CONDS.get(operands[0].upper(), 0x00)
                     imm_str = operands[1]
-                code.append(c)
+                self.append_code(c)
 
                 target_addr = self.parse_operand(imm_str)
                 if mnemonic == 'JMP':
-                    ic_after = current_addr + 6
+                    ic_after = self.cur_addr() + 6
                     val = target_addr - ic_after
                 else: # JMA
                     val = target_addr
-                emit_imm(code, val, 32)
+                emit_imm(self.segments[self.active_seg]['code'], val, 32)
                 instr_len = 6
             elif t == 'J1':
                 c = cond if cond is not None else 0x00
@@ -591,34 +614,37 @@ class Assembler:
                 if c == 0x00 and len(operands) > 1:
                     c = CONDS.get(operands[0].upper(), 0x00)
                     reg_str = operands[1]
-                code.append(c)
-                code.append(REGISTERS[reg_str.upper()])
+                self.append_code(c)
+                self.append_code(REGISTERS[reg_str.upper()])
                 instr_len = 3
             elif t in ['STR', 'LOD']:
                 if len(operands) < 2:
                     print(f"Not enough operands for {mnemonic}")
                     continue
 
-                # Проверка скобок
                 if not (operands[1].startswith('[') and operands[1].endswith(']')):
                     print(f"Error: Address in {mnemonic} must be in brackets: {operands[1]}")
                     continue
 
                 mode, l = self.get_mem_mode_and_len(operands[1])
                 sf_offset = {'F':0, 'S':1, 'R':2, 'SD':3, 'RD':4}[mode]
-                code[-1] += sf_offset
-                code.append(REGISTERS[operands[0].upper()])
+                self.segments[self.active_seg]['code'][-1] += sf_offset
+                self.append_code(REGISTERS[operands[0].upper()])
                 data = self.parse_mem_data(operands[1], mode)
-                code.extend(data)
+                self.extend_code(data)
                 instr_len = l
 
-            current_addr += instr_len
-        return code
+            self.add_addr(instr_len)
 
     def assemble(self, source):
-        lines = source.split('\n')
+        lines = source.splitlines()
         self.first_pass(lines)
-        return self.second_pass(lines)
+        for seg in SEGMENTS:
+            self.segments[seg]['addr'] = 0
+        self.active_seg = 'text'
+        self.second_pass(lines)
+        final = self.segments['text']['code'] + self.segments['data']['code'] + self.segments['bss']['code']
+        return final
 
 def main():
     if len(sys.argv) < 2:
@@ -639,6 +665,7 @@ def main():
         f.write(bytes(code))
 
     print(f"{len(code)} bytes collected. Labels: {asm.labels}")
+    print(f"Segments: text={len(asm.segments['text']['code'])}, data={len(asm.segments['data']['code'])}, bss={len(asm.segments['bss']['code'])}")
 
 if __name__ == '__main__':
     main()
