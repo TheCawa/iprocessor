@@ -121,6 +121,19 @@ def emit_imm(code, val, size):
         code.append((val >> 8) & 0xFF)
         code.append(val & 0xFF)
 
+def write_intel_hex(filename, data, base_addr=0):
+    """Writes data in Intel HEX format."""
+    with open(filename, 'w') as f:
+        for i in range(0, len(data), 16):
+            chunk = data[i:i+16]
+            addr = base_addr + i
+            rec_len = len(chunk)
+            rec = [rec_len, (addr >> 8) & 0xFF, addr & 0xFF, 0x00] + chunk
+            checksum = ((-sum(rec)) & 0xFF)
+            hex_str = ':' + ''.join(f'{b:02X}' for b in rec) + f'{checksum:02X}'
+            f.write(hex_str + '\n')
+        f.write(':00000001FF\n')
+
 class Assembler:
     def __init__(self):
         self.labels = {}
@@ -158,7 +171,7 @@ class Assembler:
         except: return 0
 
     def parse_operands(self, s):
-        """Корректно разбивает строку на операнды, учитывая квадратные скобки и строки."""
+        """Correctly splits string into operands, respecting brackets and strings."""
         operands = []
         current = ""
         in_brackets = 0
@@ -211,30 +224,39 @@ class Assembler:
     def get_mem_mode_and_len(self, operand):
         op = operand.strip()
         if not (op.startswith('[') and op.endswith(']')):
-            raise ValueError(f"Адрес в STR/LOD должен быть в квадратных скобках: {operand}")
+            raise ValueError(f"Address in STR/LOD must be in brackets: {operand}")
 
-        inner = op[1:-1].strip()
+        inner = op[1:-1].strip().replace(' ', '')
 
         if ':' in inner:
             if '+' in inner or '-' in inner: return 'SD', 6
             else: return 'S', 5
 
-        expr = inner.replace('-', '+-')
-        parts = [p.strip() for p in expr.split('+') if p.strip()]
-
-        regs = []
+        regs_found = []
         has_imm = False
+        temp = inner
 
-        for p in parts:
-            if p.upper() in REGISTERS:
-                regs.append(p.upper())
-            else:
-                has_imm = True
+        for rname in sorted(REGISTERS.keys(), key=len, reverse=True):
+            if rname in temp.upper():
+                idx = temp.upper().find(rname)
+                before = temp[idx-1] if idx > 0 else ' '
+                after = temp[idx+len(rname)] if idx+len(rname) < len(temp) else ' '
+                if before in ' 	+-' and after in ' 	+-':
+                    regs_found.append(rname)
+                    temp = temp[:idx] + ' ' * len(rname) + temp[idx+len(rname):]
 
-        if len(regs) == 2:
+        remaining = temp.replace(' ', '')
+        cleaned = remaining
+        for r in regs_found:
+            cleaned = cleaned.replace(r, '', 1)
+        cleaned = cleaned.strip()
+        if cleaned and cleaned not in ('+', '-', '+-', '-+'):
+            has_imm = True
+
+        if len(regs_found) == 2:
             if has_imm: return 'SD', 6
             else: return 'S', 5
-        elif len(regs) == 1:
+        elif len(regs_found) == 1:
             if has_imm: return 'RD', 5
             else: return 'R', 4
         else:
@@ -282,22 +304,45 @@ class Assembler:
                     disp = self.parse_operand(m.group(4)) * sign
                     return [rB, rA, disp & 0xFF]
             else:
-                expr = inner.replace('-', '+-')
-                parts = [p.strip() for p in expr.split('+') if p.strip()]
                 regs = []
                 disp = 0
-                for p in parts:
-                    if p.upper() in REGISTERS: regs.append(p.upper())
-                    else: disp += self.parse_operand(p)
+                for rname in REGISTERS:
+                    if rname in inner.upper():
+                        idx = inner.upper().find(rname)
+                        before = inner[idx-1] if idx > 0 else ' '
+                        after = inner[idx+len(rname)] if idx+len(rname) < len(inner) else ' '
+                        if before in ' \t+-' and after in ' \t+-':
+                            regs.append(rname)
+                if len(regs) != 2:
+                    raise ValueError(f"Expected 2 registers in: {inner}")
+                expr = inner
+                for r in regs:
+                    expr = expr.upper().replace(r, '', 1)
+                expr = expr.strip().replace(' ', '')
+                while expr.startswith('+'):
+                    expr = expr[1:]
+                if expr:
+                    disp = self.parse_operand(expr)
                 return [REGISTERS[regs[0]], REGISTERS[regs[1]], disp & 0xFF]
         elif mode == 'RD':
-            expr = inner.replace('-', '+-')
-            parts = [p.strip() for p in expr.split('+') if p.strip()]
             reg = None
             disp = 0
-            for p in parts:
-                if p.upper() in REGISTERS: reg = p.upper()
-                else: disp += self.parse_operand(p)
+            for rname in REGISTERS:
+                if rname in inner.upper():
+                    idx = inner.upper().find(rname)
+                    before = inner[idx-1] if idx > 0 else ' '
+                    after = inner[idx+len(rname)] if idx+len(rname) < len(inner) else ' '
+                    if before in ' \t+-' and after in ' \t+-':
+                        reg = rname
+                        break
+            if reg is None:
+                raise ValueError(f"Cannot find register in: {inner}")
+            expr = inner.upper().replace(reg, '', 1)
+            expr = expr.strip().replace(' ', '')
+            while expr.startswith('+'):
+                expr = expr[1:]
+            if expr:
+                disp = self.parse_operand(expr)
             return [REGISTERS[reg], disp & 0xFF]
         return []
 
@@ -665,8 +710,12 @@ def main():
     with open(out_file, 'wb') as f:
         f.write(bytes(code))
 
+    hex_file = out_file.rsplit('.', 1)[0] + '.hex'
+    write_intel_hex(hex_file, code)
+
     print(f"{len(code)} bytes collected. Labels: {asm.labels}")
     print(f"Segments: text={len(asm.segments['text'])}, data={len(asm.segments['data'])}, bss={len(asm.segments['bss'])}")
+    print(f"Written: {out_file} and {hex_file}")
 
 if __name__ == '__main__':
     main()
