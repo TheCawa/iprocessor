@@ -124,23 +124,24 @@ def emit_imm(code, val, size):
 class Assembler:
     def __init__(self):
         self.labels = {}
-        self.segments = {seg: {'addr': 0, 'code': []} for seg in SEGMENTS}
+        self.segments = {seg: [] for seg in SEGMENTS}
         self.active_seg = 'text'
+        self.addr = 0
 
     def cur_addr(self):
-        return self.segments[self.active_seg]['addr']
+        return self.addr
 
     def set_addr(self, val):
-        self.segments[self.active_seg]['addr'] = val
+        self.addr = val
 
     def add_addr(self, delta):
-        self.segments[self.active_seg]['addr'] += delta
+        self.addr += delta
 
     def append_code(self, byte):
-        self.segments[self.active_seg]['code'].append(byte)
+        self.segments[self.active_seg].append(byte)
 
     def extend_code(self, bytes_list):
-        self.segments[self.active_seg]['code'].extend(bytes_list)
+        self.segments[self.active_seg].extend(bytes_list)
 
     def parse_number(self, s):
         s = s.strip()
@@ -157,6 +158,7 @@ class Assembler:
         except: return 0
 
     def parse_operands(self, s):
+        """Корректно разбивает строку на операнды, учитывая квадратные скобки и строки."""
         operands = []
         current = ""
         in_brackets = 0
@@ -554,7 +556,7 @@ class Assembler:
                     val = target_addr - ic_after
                 else: # CLABS
                     val = target_addr
-                emit_imm(self.segments[self.active_seg]['code'], val, 32)
+                emit_imm(self.segments[self.active_seg], val, 32)
                 instr_len = 5
             elif t == 'H0':
                 self.append_code(REGISTERS[operands[0].upper()])
@@ -566,15 +568,15 @@ class Assembler:
                 instr_len = 4
             elif t == 'A1':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 8)
+                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 8)
                 instr_len = 4
             elif t == 'A2':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 16)
+                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 16)
                 instr_len = 5
             elif t == 'A3':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 32)
+                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 32)
                 instr_len = 7
             elif t == 'D0':
                 self.append_code(REGISTERS[operands[0].upper()])
@@ -582,15 +584,15 @@ class Assembler:
                 instr_len = 4
             elif t == 'D1B':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 8)
+                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 8)
                 instr_len = 4
             elif t == 'D1W':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 16)
+                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 16)
                 instr_len = 5
             elif t == 'D1DW':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg]['code'], self.parse_operand(operands[1]), 32)
+                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 32)
                 instr_len = 7
             elif t == 'J0':
                 c = cond if cond is not None else 0x00
@@ -606,7 +608,7 @@ class Assembler:
                     val = target_addr - ic_after
                 else: # JMA
                     val = target_addr
-                emit_imm(self.segments[self.active_seg]['code'], val, 32)
+                emit_imm(self.segments[self.active_seg], val, 32)
                 instr_len = 6
             elif t == 'J1':
                 c = cond if cond is not None else 0x00
@@ -628,7 +630,7 @@ class Assembler:
 
                 mode, l = self.get_mem_mode_and_len(operands[1])
                 sf_offset = {'F':0, 'S':1, 'R':2, 'SD':3, 'RD':4}[mode]
-                self.segments[self.active_seg]['code'][-1] += sf_offset
+                self.segments[self.active_seg][-1] += sf_offset
                 self.append_code(REGISTERS[operands[0].upper()])
                 data = self.parse_mem_data(operands[1], mode)
                 self.extend_code(data)
@@ -639,11 +641,10 @@ class Assembler:
     def assemble(self, source):
         lines = source.splitlines()
         self.first_pass(lines)
-        for seg in SEGMENTS:
-            self.segments[seg]['addr'] = 0
+        self.addr = 0
         self.active_seg = 'text'
         self.second_pass(lines)
-        final = self.segments['text']['code'] + self.segments['data']['code'] + self.segments['bss']['code']
+        final = self.segments['text'] + self.segments['data'] + self.segments['bss']
         return final
 
 def main():
@@ -665,7 +666,7 @@ def main():
         f.write(bytes(code))
 
     print(f"{len(code)} bytes collected. Labels: {asm.labels}")
-    print(f"Segments: text={len(asm.segments['text']['code'])}, data={len(asm.segments['data']['code'])}, bss={len(asm.segments['bss']['code'])}")
+    print(f"Segments: text={len(asm.segments['text'])}, data={len(asm.segments['data'])}, bss={len(asm.segments['bss'])}")
 
 if __name__ == '__main__':
     main()
