@@ -1,0 +1,376 @@
+
+	-# Byte order = BIG ENDIAN
+	-# Registers = 36
+	-# Among them: 
+	-#	1 zero (r0), 
+	-#	21 GPR (7 Dword EX1-EX7, 7 Word X1-X7, 7 Byte XL1-XL7), 
+	-#	1 IC (Instruction counter), 
+	-#	1 FL (Flags),
+	-#	1 SP (Stack pointer) & 1 BP (Base pointer),
+	-#	2 Index registers (IX - Source, IY - Destination),
+	-#  8 Additional registers (A0-A7, can be used as address register, or additional GPRs).
+	-#  1 Interrupt descriptor table register (IDTR)
+	
+	-# Data address bus: 		 32 bit (4GB; 4096MB); 
+	-# Instructions address bus: 32 bit (4GB; 4096MB); 
+	-# Input data bus: 			 32 bit (4 Bytes);
+	-# Output data bus:			 32 bit (4 Bytes);
+	-# Input instructions bus: 	 64 bit (8 Bytes);
+	-# Memory model: 			 Flat;
+	-# Memory addressing modes:  Flat (imm32), Index (Base:Offset), Indirect (reg), 
+								 Index-disp (Base:Offset:disp), Indirect-disp (reg:disp);
+	-# Insts. addressing modes:  Flag (IC=imm32), Relative (IC+imm32), Indirect (IC=reg).
+
+Registers:
+	00h - r0
+	
+	01h - EX1	02h - EX2	03h - EX3	04h - EX4	05h - EX5	06h - EX6	07h - EX7
+	08h - X1	09h - X2	0Ah - X3	0Bh - X4	0Ch - X5	0Dh - X6	0Eh - X7
+	0Fh - XL1	10h - XL2	11h - XL3	12h - XL4	13h - XL5	14h - XL6	15h - XL7
+	
+	16h - IC	19h - BP	1Ch - A0	1Fh - A3	22h - A6
+	17h - FL	1Ah - IX	1Dh - A1	20h - A4	23h - A7
+	18h - SP	1Bh - IY	1Eh - A2	21h - A5	24h - IDTR
+	
+	Register file out ABI:
+	A - ALU_A, DATA_OUT
+	B - ALU_B, SRC_ADDR
+	C - SRC_ADDR
+	
+Modes:
+	#ID - #BIN - #NAME	 - #LE0 #LE1 #LE2 #LE3
+	00h - 0000 - Byte	 -  n    n    n    y
+	01h - 0001 - Word    -  n    n    y    y
+	02h - 0010 - Dword   -  y    y    y    y
+	03h - 0011 - Qword X -  x    x    x    x
+	04h - 0100 - REG     -  ?    ?    ?    ?
+	
+	-# REG is mode lookup table
+	
+	-# LEGEND:
+	-# LEn - MEM Line enable
+	-# n - no; 
+	-# y - yes; 
+	-# x - not made; 
+	-# ? - depends on the mode.
+	
+	
+Registers modes lookup table:
+	#IDRNGE - #RANGE  - #MODE - #UNIT
+	
+	01h-07h - EX1-EX7 - 02h   - Dword
+	08h-0Eh - X1-X7   - 01h   - Word
+	0Fh-15h - XL1-XL7 - 00h   - Byte
+	16h     - IC      - 02h   - Dword
+	17h     - FL  	  - 00h   - Byte
+	18h     - SP      - 02h   - Dword
+	19h     - BP      - 02h   - Dword
+	1Ah-1Bh - IX-IY   - 02h   - Dword
+	1Ch-23h - A0-A7   - 02h   - Dword
+	
+	-# LEGEND:
+	-# IDRNGE - ID range
+	-# RANGE - registers range
+	
+Instruction types:
+	#ID - #Name - #Length - #Mnemonic
+	
+	00h - S0    - 1B 	  - <OP>
+	01h - S1	- 2B	  - <OP> <rD>
+	02h - S2 	- 2B	  - <OP> <rS>
+	03h - S3    - 2B      - <OP> <rS/D>
+	04h - S4    - 2B      - <OP> <imm8>
+	05h - S5    - 3B	  - <OP> <imm16>
+	06h - S6 	- 5B	  - <OP> <imm32>
+	
+	07h - A0	- 4B	  - <OP> <SF> <rS/D> <rS>
+	08h - A1	- 4B	  - <OP> <SF> <rS/D> <imm8>
+	09h - A2	- 5B	  - <OP> <SF> <rS/D> <imm16>
+	0Ah - A3	- 7B	  - <OP> <SF> <rS/D> <imm32>
+	
+	0Bh - J0	- 6B	  - <OP> <COND> <imm32>
+	0Ch - J1 	- 3B	  - <OP> <COND> <rS>
+	
+  U 0Dh - I0	- 6B	  - <OP> <imm8> <imm32>
+	0Eh - H0 	- 3B	  - <OP> <rS/D> <disp8>
+	
+	0Fh - D0	- 4B	  - <OP> <SF> <rD> <rS>
+	10h - D1B 	- 4B	  - <OP> <SF> <rD> <imm8>
+	11h - D1W	- 5B	  - <OP> <SF> <rD> <imm16>
+	12h - D1DW  - 7B	  - <OP> <SF> <rD> <imm32>
+
+	13h - D2F 	- 7B	  - <OP> <SF> <rS> <Addr32>
+	14h - D2S	- 5B	  - <OP> <SF> <rS> <rB>:<rA>
+	15h - D2R	- 4B	  - <OP> <SF> <rS> <rA>
+	16h - D2SD  - 6B	  - <OP> <SF> <rS> <rB>:<rA> <disp8>
+	17h - D2RD  - 5B 	  - <OP> <SF> <rS> <rA> <disp8>
+
+	18h - D3F 	- 7B	  - <OP> <SF> <rD> <Addr32>
+	19h - D3S	- 5B	  - <OP> <SF> <rD> <rB>:<rA>
+	1Ah - D3R	- 4B	  - <OP> <SF> <rD> <rA>
+	1Bh - D3SD  - 6B	  - <OP> <SF> <rD> <rB>:<rA> <disp8>
+	1Ch - D3RD  - 5B	  - <OP> <SF> <rD> <rA> <disp8>
+
+	
+Instructions:
+	#OP #SF - #Name   - #InsType - #FlMask  - #Description
+	
+	00h     - NOP 	  - S0 		 - -------- - No operation
+	01h     - HALT 	  - S0       - -------- - Halt clock
+	02h     - WAIT    - S0       - -------- - Halt until IRQ
+	
+	03h 00h - ADD	  - A0       - ---ZOS-C - Addition
+	03h 01h - ADD.b   - A1 		 - ---ZOS-C - Add immediate (byte)
+	03h 02h - ADD.w   - A2 		 - ---ZOS-C - Add immediate (word)
+	03h 03h - ADD.dw  - A3 		 - ---ZOS-C - Add immediate (dword)
+	
+	04h 00h - ADC     - A0 		 - ---ZOS-C - Addition with carry
+	04h 01h - ADC.b   - A1 		 - ---ZOS-C - Add carry immediate (byte)
+	04h 02h - ADC.w   - A2 		 - ---ZOS-C - Add carry immediate (word)
+	04h 03h - ADC.dw  - A3 	     - ---ZOS-C - Add carry immediate (dword)
+	
+	05h 00h - SUB	  - A0       - ---ZOSB- - Subtraction
+	05h 01h - SUB.b   - A1 		 - ---ZOSB- - Subtract immediate (byte)
+	05h 02h - SUB.w   - A2 		 - ---ZOSB- - Subtract immediate (word)
+	05h 03h - SUB.dw  - A3 		 - ---ZOSB- - Subtract immediate (dword)
+	
+	06h 00h - SBB	  - A0       - ---ZOSB- - Subtraction with borrow
+	06h 01h - SBB.b   - A1 		 - ---ZOSB- - Subtract with borrow immediate (byte)
+	06h 02h - SBB.w   - A2 		 - ---ZOSB- - Subtract with borrow immediate (word)
+	06h 03h - SBB.dw  - A3 		 - ---ZOSB- - Subtract with borrow immediate (dword)
+	
+	07h 00h - MUL	  - A0       - ---ZOS-- - Multiply
+	07h 01h - MUL.b   - A1 		 - ---ZOS-- - Multiply immediate (byte)
+	07h 02h - MUL.w   - A2 		 - ---ZOS-- - Multiply immediate (word)
+	07h 03h - MUL.dw  - A3 		 - ---ZOS-- - Multiply immediate (dword)
+	
+	08h 00h - IMUL	  - A0       - ---ZOS-- - Signed Multiply
+	08h 01h - IMUL.b  - A1 		 - ---ZOS-- - Signed Multiply immediate (byte)
+	08h 02h - IMUL.w  - A2 		 - ---ZOS-- - Signed Multiply immediate (word)
+	08h 03h - IMUL.dw - A3 		 - ---ZOS-- - Signed Multiply immediate (dword)
+	
+	09h 00h - DIV	  - A0       - ---ZOS-- - Divide
+	09h 01h - DIV.b   - A1 		 - ---ZOS-- - Divide immediate (byte)
+	09h 02h - DIV.w   - A2 		 - ---ZOS-- - Divide immediate (word)
+	09h 03h - DIV.dw  - A3 		 - ---ZOS-- - Divide immediate (dword)
+	
+	0Ah 00h - IDIV	  - A0       - ---ZOS-- - Signed Divide
+	0Ah 01h - IDIV.b  - A1 		 - ---ZOS-- - Signed Divide immediate (byte)
+	0Ah 02h - IDIV.w  - A2 		 - ---ZOS-- - Signed Divide immediate (word)
+	0Ah 03h - IDIV.dw - A3 		 - ---ZOS-- - Signed Divide immediate (dword)
+	
+	0Bh     - NOT     - S3       - ---ZOS--
+	0Ch     - INC     - S3       - ---ZOS-C - Increment by one
+	0Dh     - DEC     - S3       - ---ZOSB- - Decrement by one
+	
+	0Eh     - PUSH    - S2 		 - -------- - Push to stack
+	0Fh     - POP     - S1		 - -------- - Pop from stack
+	
+	10h     - CALL    - S6       - -------- - Call subroutine (relative)
+	11h     - CALLR   - S2       - -------- - Call subroutine (register)
+	12h     - CLABS   - S6       - -------- - Call subroutine (absolute)
+	13h     - RET     - S0       - -------- - Return from subroutine
+	
+	14h     - LSL     - H0		 - ---ZOS-- - Logical shift left
+	15h     - LSR     - H0		 - ---ZOS-- - Logical shift right
+	16h     - ASR     - H0		 - ---ZOS-- - Arithmetical shift right
+	17h     - ROL     - H0		 - ---ZOS-- - Rotate left
+	18h     - ROR     - H0		 - ---ZOS-- - Rotate right
+	
+	19h 00h - AND     - A0       - ---ZOS--
+	1Ah 00h - OR      - A0       - ---ZOS--
+	1Bh 00h - XOR	  - A0 		 - ---ZOS-- 
+	
+	1Ch 00h - CMP     - A0 		 - LEGZOSB- - Compare
+	1Ch 01h - CMP.b   - A1 		 - LEGZOSB- - Compare immediate (byte)
+	1Ch 02h - CMP.w   - A2 		 - LEGZOSB- - Compare immediate (word)
+	1Ch 03h - CMP.dw  - A3 		 - LEGZOSB- - Compare immediate (dword)
+	
+	1Dh 00h - ICMP    - A0 		 - LEGZOSB- - Signed Compare
+	1Dh 01h - ICMP.b  - A1 		 - LEGZOSB- - Signed Compare immediate (byte)
+	1Dh 02h - ICMP.w  - A2 		 - LEGZOSB- - Signed Compare immediate (word)
+	1Dh 03h - ICMP.dw - A3 		 - LEGZOSB- - Signed Compare immediate (dword)
+	
+	1Eh     - JMP     - J0       - -------- - Branch (relative)
+	1Fh     - JMPR    - J1       - -------- - Branch (register)
+	20h     - JMA     - J0       - -------- - Branch (absolute)
+	
+	21h 00h - COPY    - D0       - -------- - Copy (reg-reg)
+	21h 01h - LDI.B   - D1B      - -------- - Load immediate (byte)
+	21h 02h - LDI.W   - D1W      - -------- - Load immediate (word)
+	21h 03h - LDI.DW  - D1DW     - -------- - Load immediate (dword)
+	
+	22h 00h - STR.B   - D2F      - -------- - Store byte (Absolute; reg-mem)
+	22h 01h - STR.B   - D2S      - -------- - Store byte (Segment; reg-mem)
+	22h 02h - STR.B   - D2R      - -------- - Store byte (Register; reg-mem)
+	22h 03h - STR.B   - D2SD     - -------- - Store byte (Segment-displacement; reg-mem)
+	22h 04h - STR.B   - D2RD     - -------- - Store byte (Register-displacement; reg-mem)
+	
+	22h 05h - STR.W   - D2F      - -------- - Store word (Absolute; reg-mem)
+	22h 06h - STR.W   - D2S      - -------- - Store word (Segment; reg-mem)
+	22h 07h - STR.W   - D2R      - -------- - Store word (Register; reg-mem)
+	22h 08h - STR.W   - D2SD     - -------- - Store word (Segment-displacement; reg-mem)
+	22h 09h - STR.W   - D2RD     - -------- - Store word (Register-displacement; reg-mem)
+	
+	22h 0Ah - STR.DW  - D2F      - -------- - Store dword (Absolute; reg-mem)
+	22h 0Bh - STR.DW  - D2S      - -------- - Store dword (Segment; reg-mem)
+	22h 0Ch - STR.DW  - D2R      - -------- - Store dword (Register; reg-mem)
+	22h 0Dh - STR.DW  - D2SD     - -------- - Store dword (Segment-displacement; reg-mem)
+	22h 0Eh - STR.DW  - D2RD     - -------- - Store dword (Register-displacement; reg-mem)
+	
+	23h 00h - LOD.B   - D3F      - -------- - Load byte (Absolute; reg-mem)
+	23h 01h - LOD.B   - D3S      - -------- - Load byte (Segment; reg-mem)
+	23h 02h - LOD.B   - D3R      - -------- - Load byte (Register; reg-mem)
+	23h 03h - LOD.B   - D3SD     - -------- - Load byte (Segment-displacement; reg-mem)
+	23h 04h - LOD.B   - D3RD     - -------- - Load byte (Register-displacement; reg-mem)
+	
+	23h 05h - LOD.W   - D3F      - -------- - Load word (Absolute; reg-mem)
+	23h 06h - LOD.W   - D3S      - -------- - Load word (Segment; reg-mem)
+	23h 07h - LOD.W   - D3R      - -------- - Load word (Register; reg-mem)
+	23h 08h - LOD.W   - D3SD     - -------- - Load word (Segment-displacement; reg-mem)
+	23h 09h - LOD.W   - D3RD     - -------- - Load word (Register-displacement; reg-mem)
+	
+	23h 0Ah - LOD.DW  - D3F      - -------- - Load dword (Absolute; reg-mem)
+	23h 0Bh - LOD.DW  - D3S      - -------- - Load dword (Segment; reg-mem)
+	23h 0Ch - LOD.DW  - D3R      - -------- - Load dword (Register; reg-mem)
+	23h 0Dh - LOD.DW  - D3SD     - -------- - Load dword (Segment-displacement; reg-mem)
+	23h 0Eh - LOD.DW  - D3RD     - -------- - Load dword (Register-displacement; reg-mem)
+
+	25h     - INT     - S4       - -------- - Interrupt
+	26h     - IRET    - S0       - -------- - Return from interrupt
+	27h     - CLI     - S0       - -------- - Disable interrupts
+	28h     - STI     - S0       - -------- - Enable interrupts
+	
+	29h 00h - REM     - A0       - ---ZOS-- - Remainder
+	29h 01h - REM.b   - A1       - ---ZOS-- - Remainder immediate (byte)
+	29h 02h - REM.w   - A2       - ---ZOS-- - Remainder immediate (word)
+	29h 03h - REM.dw  - A3       - ---ZOS-- - Remainder immediate (dword)
+	
+	2Ah 00h - IREM    - A0       - ---ZOS-- - Signed Remainder
+	2Ah 01h - IREM.b  - A1       - ---ZOS-- - Signed Remainder immediate (byte)
+	2Ah 02h - IREM.w  - A2       - ---ZOS-- - Signed Remainder immediate (word)
+	2Ah 03h - IREM.dw - A3       - ---ZOS-- - Signed Remainder immediate (dword)
+	
+MICROCODE:
+	#NAME    - #OP #SF - #IT #FM #MD			#NAME    - #OP #SF - #IT #FM #MD			#NAME    - #OP #SF - #IT #FM #MD
+	
+	NOP      - 00h     - 00h 00h 00h			NOT      - 0Bh     - 03h 1Ch 04h			AND		 - 19h 00h - 07h 1Ch 04h
+	HALT     - 01h     - 00h 00h 00h			INC      - 0Ch     - 03h 1Dh 04h			OR       - 1Ah 00h - 07h 1Ch 04h
+	WAIT     - 02h     - 00h 00h 00h			DEC      - 0Dh     - 03h 1Eh 04h			XOR      - 1Bh 00h - 07h 1Ch 04h
+									
+	ADD      - 03h 00h - 07h 1Dh 04h		    SUB      - 05h 00h - 07h 1Eh 04h			LSL 	 - 14h     - 0Eh 1Ch 04h
+	ADD.b    - 03h 01h - 08h 1Dh 00h            SUB.b    - 05h 01h - 08h 1Eh 00h			LSR 	 - 15h     - 0Eh 1Ch 04h
+	ADD.w    - 03h 02h - 09h 1Dh 01h            SUB.w    - 05h 02h - 09h 1Eh 01h			ASR 	 - 16h     - 0Eh 1Ch 04h
+	ADD.dw   - 03h 03h - 0Ah 1Dh 02h            SUB.dw   - 05h 03h - 0Ah 1Eh 02h			ROL 	 - 17h     - 0Eh 1Ch 04h
+																							ROR 	 - 18h     - 0Eh 1Ch 04h
+	ADC      - 04h 00h - 07h 1Dh 04h            SBB      - 06h 00h - 07h 1Eh 04h
+	ADC.b    - 04h 01h - 08h 1Dh 00h            SBB.b    - 06h 01h - 08h 1Eh 00h			PUSH     - 0Eh	   - 02h 00h 04h
+	ADC.w    - 04h 02h - 09h 1Dh 01h            SBB.w    - 06h 02h - 09h 1Eh 01h			POP      - 0Fh	   - 01h 00h 04h
+	ADC.dw   - 04h 03h - 0Ah 1Dh 02h            SBB.dw   - 06h 03h - 0Ah 1Eh 02h
+																							CALL     - 10h     - 06h 00h 04h
+	MUL      - 07h 00h - 07h 1Ch 04h			DIV      - 09h 00h - 07h 1Ch 04h			CALLR    - 11h     - 02h 00h 04h
+	MUL.b    - 07h 01h - 08h 1Ch 00h			DIV.b    - 09h 01h - 08h 1Ch 00h			CLABS    - 12h     - 06h 00h 04h
+	MUL.w    - 07h 02h - 09h 1Ch 01h			DIV.w    - 09h 02h - 09h 1Ch 01h			RET      - 13h     - 00h 00h 04h
+	MUL.dw 	 - 07h 03h - 0Ah 1Ch 02h			DIV.dw 	 - 09h 03h - 0Ah 1Ch 02h
+																							JMP      - 1Eh     - 0Bh 00h 00h
+	IMUL     - 08h 00h - 07h 1Ch 04h			IDIV     - 0Ah 00h - 07h 1Ch 04h			JMPR     - 1Fh     - 0Ch 00h 04h
+	IMUL.b   - 08h 01h - 08h 1Ch 00h			IDIV.b   - 0Ah 01h - 08h 1Ch 00h			JMA      - 20h     - 0Bh 00h 00h
+	IMUL.w   - 08h 02h - 09h 1Ch 01h			IDIV.w   - 0Ah 02h - 09h 1Ch 01h
+	IMUL.dw  - 08h 03h - 0Ah 1Ch 02h			IDIV.dw  - 0Ah 03h - 0Ah 1Ch 02h			COPY     - 21h 00h - 0Fh 00h 04h
+	
+	CMP	     - 1Ch 00h - 07h FEh 04h			ICMP	 - 1Dh 00h - 07h FEh 04h			LDI.b    - 21h 01h - 10h 00h 00h
+	CMP.b    - 1Ch 01h - 08h FEh 00h			ICMP.b   - 1Dh 01h - 08h FEh 00h			LDI.w    - 21h 02h - 11h 00h 01h
+	CMP.w    - 1Ch 02h - 09h FEh 01h			ICMP.w   - 1Dh 02h - 09h FEh 01h			LDI.dw   - 21h 03h - 12h 00h 02h
+	CMP.dw   - 1Ch 03h - 0Ah FEh 02h			ICMP.dw  - 1Dh 03h - 0Ah FEh 02h
+																							INT      - 25h     - 04h 00h 00h
+	REM	     - 29h 00h - 07h 1Ch 04h			IREM	 - 2Ah 00h - 07h 1Ch 04h			IRET     - 26h     - 00h 00h 00h
+	REM.b    - 29h 01h - 08h 1Ch 00h			IREM.b   - 2Ah 01h - 08h 1Ch 00h			CLI      - 27h     - 00h 00h 00h
+	REM.w    - 29h 02h - 09h 1Ch 01h			IREM.w   - 2Ah 02h - 09h 1Ch 01h			STI      - 28h     - 00h 00h 00h
+	REM.dw   - 29h 03h - 0Ah 1Ch 02h			IREM.dw  - 2Ah 03h - 0Ah 1Ch 02h			
+	
+	STR.b    - 22h 00h - 13h 00h 00h			LOD.b    - 23h 00h - 18h 00h 00h
+	STR.b    - 22h 01h - 14h 00h 00h			LOD.b    - 23h 01h - 19h 00h 00h
+	STR.b    - 22h 02h - 15h 00h 00h			LOD.b    - 23h 02h - 1Ah 00h 00h
+	STR.b    - 22h 03h - 16h 00h 00h			LOD.b    - 23h 03h - 1Bh 00h 00h
+	STR.b    - 22h 04h - 17h 00h 00h			LOD.b    - 23h 04h - 1Ch 00h 00h
+	
+	STR.w    - 22h 05h - 13h 00h 01h			LOD.w    - 23h 05h - 18h 00h 01h
+	STR.w    - 22h 06h - 14h 00h 01h			LOD.w    - 23h 06h - 19h 00h 01h
+	STR.w    - 22h 07h - 15h 00h 01h			LOD.w    - 23h 07h - 1Ah 00h 01h
+	STR.w    - 22h 08h - 16h 00h 01h			LOD.w    - 23h 08h - 1Bh 00h 01h
+	STR.w    - 22h 09h - 17h 00h 01h			LOD.w    - 23h 09h - 1Ch 00h 01h
+	
+	STR.dw   - 22h 0Ah - 13h 00h 04h			LOD.dw   - 23h 0Ah - 18h 00h 04h
+	STR.dw   - 22h 0Bh - 14h 00h 04h			LOD.dw   - 23h 0Bh - 19h 00h 04h
+	STR.dw   - 22h 0Ch - 15h 00h 04h			LOD.dw   - 23h 0Ch - 1Ah 00h 04h
+	STR.dw   - 22h 0Dh - 16h 00h 04h			LOD.dw   - 23h 0Dh - 1Bh 00h 04h
+	STR.dw   - 22h 0Eh - 17h 00h 04h			LOD.dw   - 23h 0Eh - 1Ch 00h 04h
+	
+	-# LEGEND:
+	-# OP - Operation
+	-# SF - Suffix
+	-# IT - Instruction type
+	-# FM - Flags mask
+	-# MD - Mode (byte, word, dword)
+	
+ALU/BSU Operations:
+	  #ID - #BIN - #NAME
+ALU - 00h - 0000 - ADD
+ALU - 01h - 0001 - SUB
+ALU - 02h - 0010 - MUL
+ALU - 03h - 0011 - DIV/REM
+ALU - 04h - 0100 - AND
+ALU - 05h - 0101 - OR
+ALU - 06h - 0110 - XOR
+ALU - 07h - 0111 - NOT
+	  ----------------
+BSU - 08h - 1000 - LSL
+BSU - 09h - 1001 - LSR
+BSU - 0Ah - 1010 - ASR
+BSU - 0Bh - 1011 - ROL
+BSU - 0Ch - 1100 - ROR
+
+Flags:
+	FLAG REGISTER:		FLAGS:
+	       				#ID - #CODE - #LOGIC - #NAME
+	00h - C				00h - UNC	- ALW 1  - Unconditional
+	01h - B				01h - CF	- C_OUT  - Carry flag
+	02h - S				02h - BF	- B_OUT	 - Borrow flag
+	03h - O				03h - SF	- SIGN   - Sign flag
+	04h - Z				04h - OF	- OVERFL - Overflow flag
+	05h - G				05h - ZF	- =0	 - Equals zero
+	06h - E				06h - NZ	- !=0	 - Not equals zero
+	07h - L 			07h - GR	- >		 - Greater than
+						08h - GE	- > || = - Greater or equals
+						09h - LS 	- <		 - Less than
+						0Ah - LE 	- < || = - Less or equals
+						0Bh - EQ	- =		 - Equals
+						0Ch - NE	- !=	 - Not equals
+						
+Something about stack:
+	#OP   - #INC - #DEC - #IN/OUT - #IOMD
+	
+	PUSH  - 04h  - 00h  - rSrc    - OUT
+	POP   - 00h  - 04h  - rDist	  - IN
+	CALL  - 04h  - 00h  - IC+5    - OUT
+	CALLR - 04h  - 00h  - IC+2    - OUT
+	CLABS - 04h  - 00h  - IC+5    - OUT
+	RET   - 00h  - 00h  - IC	  - IN
+	
+	-# LEGEND:
+	-# OP - Stack operation
+	-# INC - How much does SP increase
+	-# DEC - How much does SP decrease
+	-# IN/OUT - Where/from to deliver data from/to the stack
+	-# IOMD - Input or output
+	
+Something about IDTR:
+	#OP   - #ICBKUP - #ADDRESS
+	
+	INT   - IC+2    - IDTR + (imm8 << 2)
+	IRQ   - IC+0    - IDTR + (imm8 << 2)
+	
+	-# LEGEND:
+	-# OP - Operation
+	-# ICBKUP - IC Backup
+	-# ADDRESS - How is the ISR address calculated
