@@ -1,0 +1,2 @@
+python CASM148.py code.asm
+pause
