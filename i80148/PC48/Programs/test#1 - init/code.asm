@@ -15,7 +15,7 @@ main2:
 initmsg:
   XOR 		 FL, FL
   LOD.b      XL1, [IX - 3]
-  STR.b      XL1, [0x00020000]
+  STR.b      XL1, [0x00020018]
   INC		 IX
   DEC 		 XL2
   JMP 		 NZ, initmsg

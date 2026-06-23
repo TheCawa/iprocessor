@@ -7,7 +7,7 @@ main:
 	LDI.b	   XL1, 0x20
 
 loop:
-	STR.b      XL1, [0x00020000]
+	STR.b      XL1, [0x00020018]
 	CMP.b 	   XL1, 0x7E
 	INC		   XL1
 	JMP		   NE, loop

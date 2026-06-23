@@ -15,13 +15,13 @@ main:
     ADD EX1, EX2
     
     LDI.B XL1, 0x41 ; 'A'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x44 ; 'D'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x44 ; 'D'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x3D ; '='
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     
     COPY A0, EX1
     CALL print_dec
@@ -33,13 +33,13 @@ main:
     SUB EX3, EX4
 
     LDI.B XL1, 0x53 ; 'S'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x55 ; 'U'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x42 ; 'B'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x3D ; '='
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
 
     COPY A0, EX3
     CALL print_dec
@@ -51,13 +51,13 @@ main:
     MUL EX5, EX6
 
     LDI.B XL1, 0x4D ; 'M'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x55 ; 'U'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x4C ; 'L'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x3D ; '='
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
 
     COPY A0, EX5
     CALL print_dec
@@ -69,13 +69,13 @@ main:
     DIV EX7, A1
 
     LDI.B XL1, 0x44 ; 'D'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x49 ; 'I'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x56 ; 'V'
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x3D ; '='
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
 
     COPY A0, EX7
     CALL print_dec
@@ -86,9 +86,9 @@ main:
 print_nl:
     PUSH A2
     LDI.B XL1, 0x0D
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     LDI.B XL1, 0x0A
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     POP A2
     RET
 
@@ -108,7 +108,7 @@ print_dec:
     JMP NZ, pdf_not_zero
     
     LDI.B XL1, 0x30
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     JMP pdf_done
 
 pdf_not_zero:
@@ -129,7 +129,7 @@ pdf_print:
     
     POP EX3
     COPY XL1, EX3
-    STR.B XL1, [0x00020000]
+    STR.B XL1, [0x00020018]
     DEC EX2
     JMP pdf_print
 
