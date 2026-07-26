@@ -149,20 +149,25 @@ int main(int argc, char* argv[]) {
     std::cout << "CPU: " << backend->description << "\n";
     std::cout << "Video card: " << vc->name << " - " << vc->description << "\n";
 
-    // Always load the ROM BIOS at address 0.
-    std::string resolved_bios = resolve_bios_path(bios_path);
-    if (!resolved_bios.empty()) {
-        if (cpu_load_file(&cpu, resolved_bios.c_str(), 0x00000000) != 0) {
-            std::cerr << "[WARN] Failed to load BIOS from " << resolved_bios << "\n";
-            // Continue anyway; user may supply their own ROM via the GUI.
+    bool run_program = (filename != nullptr);
+    bool rom_override = run_program && load_addr_set && (load_addr == 0x00000000);
+
+    if (!run_program) {
+        // No program given: load default BIOS and boot from it.
+        std::string resolved_bios = resolve_bios_path(bios_path);
+        if (!resolved_bios.empty()) {
+            if (cpu_load_file(&cpu, resolved_bios.c_str(), 0x00000000) != 0) {
+                std::cerr << "[WARN] Failed to load BIOS from " << resolved_bios << "\n";
+                // Continue anyway; user may supply their own ROM via the GUI.
+            }
+        } else {
+            std::cerr << "[WARN] No default BIOS found. Use --bios <path> to specify one.\n";
         }
-    } else {
-        std::cerr << "[WARN] No default BIOS found. Use --bios <path> to specify one.\n";
     }
 
     if (filename) {
-        if (load_addr_set && load_addr == 0x00000000) {
-            // Explicit BIOS/ROM image overrides the default BIOS.
+        if (rom_override) {
+            // Explicit ROM image replaces the default BIOS.
             if (cpu_load_file(&cpu, filename, 0x00000000) != 0) {
                 std::cerr << "[ERROR] Failed to load ROM/BIOS file!\n";
                 emulator_shutdown();
@@ -193,8 +198,12 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Start execution at the BIOS/ROM entry point (0x00000000).
-    cpu_set_reg(&cpu, backend->pc_register, 0x00000000);
+    // Set execution entry point: BIOS/ROM starts at 0, user programs start at load_addr.
+    if (rom_override || !run_program) {
+        cpu_set_reg(&cpu, backend->pc_register, 0x00000000);
+    } else {
+        cpu_set_reg(&cpu, backend->pc_register, load_addr);
+    }
 
     bool running = true;
     Uint32 last_frame_time = SDL_GetTicks();

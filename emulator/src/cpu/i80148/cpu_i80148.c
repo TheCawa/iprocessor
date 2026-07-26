@@ -178,7 +178,12 @@ uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
         uint32_t slot = (addr - 0x00020000) >> 8;
         uint32_t reg  = addr & 0xFF;
         if (slot == 1 && reg == 0x00) {
-            return 0x00000101; // DEV_DATA: class=1 (storage), vendor=1 (system)
+            // DEV_DATA: class=1 (storage), vendor=1 (system). Lowest byte is
+            // disk presence flag: 0x01 if the currently selected drive has an
+            // image inserted, 0x00 otherwise.
+            DiskDrive* drive = &cpu->disk_drives[cpu->disk_current_drive];
+            uint32_t present = (drive->image_path[0] != '\0') ? 0x01 : 0x00;
+            return 0x00000100 | present;
         }
         return 0;
     }

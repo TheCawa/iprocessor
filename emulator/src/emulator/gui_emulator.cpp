@@ -43,6 +43,9 @@ static SDL_Renderer* g_renderer = nullptr;
 static const VideoCard* g_vc = nullptr;
 static const CpuBackend* g_current_backend = nullptr;
 
+// Display scale factor for the screen panel (like browser zoom).
+static float g_display_scale = 1.0f;
+
 // "Open ROM..." state
 static char g_rom_path[MAX_PATH] = "";
 static char g_load_addr_buf[32] = "0x00050000";
@@ -136,6 +139,17 @@ static void emulator_reset_cpu(Cpu* cpu) {
     cpu_reset(cpu);
     if (g_vc && g_vc->reset) {
         g_vc->reset(cpu);
+    }
+    // Clear RAM above the BIOS/CMOS reserved region (0x00020000..end).
+    const uint32_t ram_start = 0x00020000;
+    if (ram_start < cpu->mem_size) {
+        memset(cpu->mem + ram_start, 0, cpu->mem_size - ram_start);
+    }
+    // Reset PC48 default video card mode select to 80x25 text mode.
+    const uint32_t vc_mode_addr = 0x0002001A;
+    if (vc_mode_addr < cpu->mem_size) {
+        cpu->mem[vc_mode_addr] = 0;
+        cpu->screen_dirty = true;
     }
 }
 
@@ -419,7 +433,8 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
     }
 
     SDL_Texture* screen_tex = g_vc ? g_vc->get_texture() : nullptr;
-    int display_w = DISPLAY_W;
+    int display_w = (int)(DISPLAY_W * g_display_scale);
+    int display_h = (int)(DISPLAY_H * g_display_scale);
 
     ImGui_ImplSDLRenderer2_NewFrame();
     ImGui_ImplSDL2_NewFrame();
@@ -641,13 +656,15 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
         if (ImGui::Button("Load", ImVec2(120, 0))) {
             uint32_t addr = (uint32_t)strtoul(g_load_addr_buf, nullptr, 0);
             uint32_t user_ram = cpu->backend ? cpu->backend->user_ram_start : 0x00060000;
-            if (addr < user_ram) {
+            // 0x00000000 is allowed as an explicit BIOS/ROM override.
+            if (addr != 0x00000000 && addr < user_ram) {
                 snprintf(g_load_error, sizeof(g_load_error),
-                         "Address below 0x%08X is reserved for system ROM/MMIO/VRAM window.", user_ram);
+                         "Address below 0x%08X is reserved for system ROM/MMIO/VRAM window (except 0x00000000 for ROM override).", user_ram);
             } else if (cpu_load_file(cpu, g_rom_path, addr) == 0) {
-                // Keep PC at the BIOS entry point; the BIOS will detect the
-                // program in RAM and jump to it.
-                cpu_set_reg(cpu, cpu->backend->pc_register, 0x00000000);
+                // Set execution entry point: ROM override starts at 0,
+                // user programs start at their load address.
+                uint32_t pc = (addr == 0x00000000) ? 0x00000000 : addr;
+                cpu_set_reg(cpu, cpu->backend->pc_register, pc);
                 g_cpu_running = true;
                 if (g_window) {
                     char title[512];
@@ -678,8 +695,11 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
     ImGui::BeginChild("ScreenPanel", ImVec2((float)(display_w + 30), 0), true);
     ImGui::Text("SCREEN (%s)", g_vc ? g_vc->description : "none");
     ImGui::Separator();
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::SliderFloat("Zoom", &g_display_scale, 0.5f, 3.0f, "%.1fx");
+    ImGui::Separator();
     if (screen_tex) {
-        ImGui::Image((void*)(intptr_t)screen_tex, ImVec2((float)DISPLAY_W, (float)DISPLAY_H));
+        ImGui::Image((void*)(intptr_t)screen_tex, ImVec2((float)display_w, (float)display_h));
         if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(0)) {
             emulator_capture_input();
         }
