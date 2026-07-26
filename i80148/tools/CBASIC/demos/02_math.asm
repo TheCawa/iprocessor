@@ -1,0 +1,257 @@
+.text
+.ORG 0x00060000
+    LDI.DW SP, 0x00080000
+    COPY BP, SP
+
+__START:
+    LDI.DW EX1, 0
+    STR.B EX1, [0x00020019]
+    LDI.DW EX1, 10
+    STR.B EX1, [0x00020018]
+    STR.B EX1, [0x00020018]
+    LDI.DW EX1, 17
+    PUSH EX1
+    POP EX1
+    STR.DW EX1, [_VAR_A_1]
+    LDI.DW EX1, 5
+    PUSH EX1
+    POP EX1
+    STR.DW EX1, [_VAR_B_2]
+    LOD.DW EX1, [_VAR_A_1]
+    PUSH EX1
+    LOD.DW EX1, [_VAR_B_2]
+    PUSH EX1
+    POP EX2
+    POP EX1
+    ADD EX1, EX2
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LOD.DW EX1, [_VAR_A_1]
+    PUSH EX1
+    LOD.DW EX1, [_VAR_B_2]
+    PUSH EX1
+    POP EX2
+    POP EX1
+    SUB EX1, EX2
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LOD.DW EX1, [_VAR_A_1]
+    PUSH EX1
+    LOD.DW EX1, [_VAR_B_2]
+    PUSH EX1
+    POP EX2
+    POP EX1
+    MUL EX1, EX2
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LOD.DW EX1, [_VAR_A_1]
+    PUSH EX1
+    LOD.DW EX1, [_VAR_B_2]
+    PUSH EX1
+    POP EX2
+    POP EX1
+    DIV EX1, EX2
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LOD.DW EX1, [_VAR_A_1]
+    PUSH EX1
+    LOD.DW EX1, [_VAR_B_2]
+    PUSH EX1
+    POP EX2
+    POP EX1
+    REM EX1, EX2
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LDI.DW EX1, 42
+    PUSH EX1
+    POP EX1
+    LDI.DW EX2, 0
+    SUB EX2, EX1
+    PUSH EX2
+    POP EX1
+    ICMP.DW EX1, 0
+    JMP.GE _ABS_POS_3
+    LDI.DW EX2, 0
+    SUB EX2, EX1
+    COPY EX1, EX2
+    _ABS_POS_3:
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LDI.DW EX1, 7
+    PUSH EX1
+    POP EX1
+    LDI.DW EX2, 0
+    SUB EX2, EX1
+    PUSH EX2
+    POP EX1
+    ICMP.DW EX1, 0
+    JMP.EQ _SGN_Z_4
+    JMP.LS _SGN_N_5
+    LDI.DW EX1, 1
+    JMA _SGN_E_6
+_SGN_Z_4:
+    LDI.DW EX1, 0
+    JMA _SGN_E_6
+_SGN_N_5:
+    LDI.DW EX1, -1
+_SGN_E_6:
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LDI.DW EX1, 3
+    PUSH EX1
+    LDI.DW EX1, 9
+    PUSH EX1
+    POP EX2
+    POP EX1
+    ICMP EX1, EX2
+    JMP.LS _MIN_E_7
+    COPY EX1, EX2
+_MIN_E_7:
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    LDI.DW EX1, 3
+    PUSH EX1
+    LDI.DW EX1, 9
+    PUSH EX1
+    POP EX2
+    POP EX1
+    ICMP EX1, EX2
+    JMP.GR _MAX_E_8
+    COPY EX1, EX2
+_MAX_E_8:
+    PUSH EX1
+    POP EX1
+    CLABS __PRINTINT
+    HALT
+
+__PRINTSTR:
+    PUSH IX
+    PUSH A2
+    COPY IX, EX1
+__PS_LOOP:
+    LOD.B XL1, [IX]
+    CMP.B XL1, 0
+    JMP.EQ __PS_END
+    STR.B XL1, [0x00020018]
+    LDI.DW A2, 50
+__PS_DLY:
+    DEC A2
+    CMP.DW A2, 0
+    JMP.NE __PS_DLY
+    INC IX
+    JMA __PS_LOOP
+__PS_END:
+    POP A2
+    POP IX
+    LDI.DW EX1, 10
+    STR.B EX1, [0x00020018]
+    RET
+
+__INPUTINT:
+    PUSH EX2
+    PUSH EX3
+    PUSH EX4
+    PUSH A0
+    LDI.DW EX1, 0
+    LDI.DW EX2, 0
+__IN_SKIP:
+    LOD.B A0, [0x0002000B]
+    CMP.B A0, 32
+    JMP.GR __IN_CHK_SIGN
+    JMA __IN_SKIP
+__IN_CHK_SIGN:
+    CMP.B A0, 45
+    JMP.NE __IN_LOOP
+    LDI.DW EX2, 1
+    LOD.B A0, [0x0002000B]
+__IN_LOOP:
+    CMP.B A0, 48
+    JMP.LS __IN_DONE
+    CMP.B A0, 57
+    JMP.GR __IN_DONE
+    SUB.b A0, 48
+    LDI.DW EX3, 10
+    MUL EX1, EX3
+    COPY EX3, A0
+    ADD EX1, EX3
+    LOD.B A0, [0x0002000B]
+    JMA __IN_LOOP
+__IN_DONE:
+    ICMP.DW EX2, 0
+    JMP.EQ __IN_POS
+    LDI.DW EX3, 0
+    SUB EX3, EX1
+    COPY EX1, EX3
+__IN_POS:
+    POP A0
+    POP EX4
+    POP EX3
+    POP EX2
+    RET
+
+__PRINTINT:
+    PUSH EX1
+    PUSH EX2
+    PUSH EX3
+    PUSH EX4
+    PUSH A0
+    PUSH A1
+    PUSH A2
+    ICMP.DW EX1, 0
+    JMP.GE __PI_POS
+    LDI.DW A1, 45
+    STR.B A1, [0x00020018]
+    LDI.DW A2, 50
+__PI_DLY1:
+    DEC A2
+    CMP.DW A2, 0
+    JMP.NE __PI_DLY1
+    LDI.DW A1, 0
+    SUB A1, EX1
+    COPY EX1, A1
+__PI_POS:
+    LDI.DW EX2, 10
+    LDI.DW EX3, 0
+__PI_LOOP:
+    COPY A0, EX1
+    REM A0, EX2
+    PUSH A0
+    INC EX3
+    DIV EX1, EX2
+    CMP.DW EX1, 0
+    JMP.NE __PI_LOOP
+__PI_PRINT:
+    POP EX4
+    LDI.DW A1, 48
+    ADD EX4, A1
+    STR.B EX4, [0x00020018]
+    LDI.DW A2, 50
+__PI_DLY2:
+    DEC A2
+    CMP.DW A2, 0
+    JMP.NE __PI_DLY2
+    DEC EX3
+    CMP.DW EX3, 0
+    JMP.NE __PI_PRINT
+    LDI.DW A1, 10
+    STR.B A1, [0x00020018]
+    POP A2
+    POP A1
+    POP A0
+    POP EX4
+    POP EX3
+    POP EX2
+    POP EX1
+    RET
+
+.data
+_VAR_A_1: .DD 0
+_VAR_B_2: .DD 0
