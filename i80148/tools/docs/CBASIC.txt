@@ -1,0 +1,217 @@
+CBASIC - Cawas BASIC for i80148
+
+	-# Version: 0.1
+	-# Target: i80148 (32-bit flat architecture)
+	-# Output: flat binary (*.bin) + intermediate assembly (*.asm)
+	-# Backend: generates CASM148 assembly, then assembles with CASM148.py
+
+Usage:
+	cd i80148/tools/CBASIC
+	python cbasic_main.py <input.bas> [-o output.bin]
+
+	-# If -o is omitted, writes program.bin and program.asm in current directory.
+	-# cbasic_main.py expects CASM148.py in the current working directory, so
+	-# it must be run from the CBASIC directory (or use build_demos.py).
+	-# Comments start with single quote (') and continue to end of line.
+	-# Source code is case-insensitive except string literals.
+
+	-# To build all demo programs:
+	-#     cd i80148/tools/CBASIC && python build_demos.py
+
+
+Pipeline:
+	#Stage            - #File
+	Preprocessor     - cbasic_parser.py  (strips comments, uppercases non-string text)
+	Parser           - cbasic_parser.py  (Lark LALR grammar)
+	Semantic check   - cbasic_semantic.py (symbol table, undeclared vars, label/sub resolution)
+	Code generator   - cbasic_codegen.py (emits i80148 assembly)
+	Assembler        - CASM148.py (produces .bin and .hex)
+
+
+Data types:
+	#Type    - #Size - #Notes
+	INTEGER  - 4     - Signed 32-bit integer
+	UBYTE    - 1     - Unsigned 8-bit
+	BYTE     - 1     - Signed 8-bit
+	UWORD    - 2     - Unsigned 16-bit
+	WORD     - 2     - Signed 16-bit
+	STRING*N - N     - Fixed-length ASCII string, N bytes
+
+	-# All arithmetic is performed in 32-bit signed integers internally.
+	-# Strings are NOT dynamically allocated; length is fixed at declaration.
+
+
+Variables and arrays:
+	DIM <name> AS <type>
+	DIM <name>(<size>) AS <type>
+
+	-# Variables must be declared before use.
+	-# GLOBAL modifier is parsed but currently has no effect on allocation.
+	-# Array indices are zero-based and use dword element size internally.
+
+
+Assignment:
+	LET <var> = <expr>
+	LET <array>(<index>) = <expr>
+
+	-# LET keyword is mandatory.
+
+
+Input and output:
+	PRINT <expr> [, <expr>]*
+	INPUT <var>
+
+	-# PRINT accepts both numbers and strings.
+	-# Multiple expressions are concatenated without separators.
+	-# INPUT reads a signed decimal integer from KBD_ASCII (MMIO 0x0002000B).
+	-# INPUT blocks until a non-digit terminates the number.
+
+
+Control flow:
+
+IF statement:
+	IF <expr> THEN
+	    <statements>
+	[ELSE
+	    <statements>]
+	ENDIF
+
+WHILE loop:
+	WHILE <expr>
+	    <statements>
+	WEND
+
+FOR loop:
+	FOR <var> = <start> TO <end> [STEP <step>]
+	    <statements>
+	NEXT <var>
+
+	-# STEP may be negative.
+	-# Loop variable must be a previously declared INTEGER variable.
+
+SELECT statement:
+	SELECT <expr>
+	    CASE <value> [: <statements>]*
+	    CASE <min> TO <max> [: <statements>]*
+	    CASE ELSE [: <statements>]*
+	END SELECT
+
+GOTO and labels:
+	<label>:
+	GOTO <label>
+
+	-# Labels are identifiers followed by ':'.
+	-# GOTO target must exist in the same program.
+
+
+Subroutines:
+	SUB <name> [(<param> [, <param>]*)]
+	    <statements>
+	END SUB
+
+	GOSUB <name> [(<arg> [, <arg>]*)]
+	RETURN
+
+	-# Subroutines are separate scopes; parameters are passed by value.
+	-# Up to 3 parameters are supported, passed in EX5, EX6, EX7.
+	-# Arguments are evaluated left-to-right into those registers.
+	-# RETURN inside SUB restores BP/SP and returns to caller.
+	-# GOSUB without arguments is also allowed for parameterless subs.
+
+
+Expressions:
+	#Operator - #Description
+	+         - Addition
+	-         - Subtraction / unary negation
+	*         - Multiplication
+	/         - Integer division
+	MOD       - Remainder
+	AND       - Bitwise AND
+	OR        - Bitwise OR
+	NOT       - Bitwise NOT
+	=         - Equal
+	<>        - Not equal
+	<         - Less than
+	>         - Greater than
+	<=        - Less or equal
+	>=        - Greater or equal
+
+	-# Operator precedence (high to low): unary +/-, * / MOD, + -, comparisons, AND, OR.
+	-# Comparisons return INTEGER 1 (true) or 0 (false).
+
+
+Built-in functions:
+	#Function - #Description
+	ABS(x)    - Absolute value
+	SGN(x)    - Sign: -1, 0 or 1
+	MIN(a,b)  - Minimum of two values
+	MAX(a,b)  - Maximum of two values
+	LEN(s)    - Length of zero-terminated string
+	PEEK(a)   - Read byte from memory address a
+	INP(a)    - Same as PEEK (read byte from port/address a)
+
+
+Runtime environment:
+	-# Generated programs are assembled at .ORG 0x00050000 (user RAM).
+	-# Stack pointer is initialized to 0x00080000.
+	-# Base pointer BP is used for subroutine frames.
+	-# Runtime routines provided by cbasic_codegen.py:
+	-#     __PRINTINT  - prints signed integer + newline
+	-#     __PRINTSTR  - prints zero-terminated string + newline
+	-#     __INPUTINT  - reads signed integer into EX1
+	-# Output goes to TERM_OUT (MMIO 0x00020018).
+	-# Terminal reset is written to TERM_RESET (MMIO 0x00020019) at startup.
+
+
+Memory layout of generated code:
+	#Region                 - #Address
+	Code (.text)            - 0x00050000
+	Variables / strings     - immediately after code (.data)
+	Stack                   - grows down from 0x00080000
+
+	-# Variables are allocated as static labels in the .data section.
+	-# Arrays are flat buffers; element access is index * 4 bytes.
+
+
+Example program:
+	' Computes 1 + 2 + ... + 10
+	dim i as integer
+	dim sum as integer
+	let sum = 0
+	for i = 1 to 10
+	    let sum = sum + i
+	next i
+	print sum
+	stop
+
+Example with subroutine:
+	' Sum of two numbers
+	dim a as integer
+	dim b as integer
+	dim r as integer
+
+	sub SumTwo(x, y)
+	    dim t as integer
+	    let t = x + y
+	    let r = t     ' store result in a global variable
+	    return
+	end sub
+
+	let a = 5
+	let b = 7
+	gosub SumTwo(a, b)
+	print r
+	stop
+
+
+Known limitations:
+	-# No floating point type.
+	-# No dynamic memory allocation.
+	-# No local arrays inside SUB (only scalar locals).
+	-# String operations are limited to literal print and LEN.
+	-# INPUT only reads integers.
+	-# Recursion is not recommended because parameters and locals are static.
+	-# END keyword is NOT supported; use STOP to terminate the program.
+	-# Identifiers are uppercased during preprocessing, so names like "Add",
+	-# "For", "If", "Sub" etc. conflict with keywords/instructions. Avoid them.
+	-# SUBs must be declared BEFORE they are used with GOSUB (no forward references).

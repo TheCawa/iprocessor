@@ -34,15 +34,25 @@ main:
   CALL 		 initmsg
   
   LDI.dw 	 IX, 0x00050000	; Disk destination
-  COPY       A0, R0
+  COPY       A0, IX
   XOR 		 EX2, EX2			; Zero sector
   LDI.dw     EX3, 0x00000001	; Amount of LBA
   LDI.dw     EX7, 0x00000002	; Read sector
-  LDI.w 	 X4, 0x0100
+  STR.dw     EX7, [0x00020111]
+  ; Загружаем до 4096 байт (1024 dword) с диска — хватает для CBASIC-демо.
+  LDI.w 	 X4, 0x0400
   CALL 		 rd_disk
   
   STR.b 	 R0, [0x00020019]	; Reset terminal
   
+  ; Delay ~1 second using PIT so POST messages remain readable.
+  LDI.dw   EX7, 2000
+  STR.dw   EX7, [0x00020031]
+bios_delay:
+  LOD.dw   EX7, [0x00020031]
+  CMP.dw   EX7, 1000
+  JMP      GR, bios_delay
+
   XOR		 X1, X1
   XOR		 X2, X2
   XOR		 X3, X3
@@ -55,7 +65,7 @@ main:
   
 initmsg:
   XOR 		 FL, FL
-  LOD.b      XL1, [IX - 3]
+  LOD.b      XL1, [IX]
   STR.b      XL1, [0x00020018]
   INC		 IX
   DEC 		 XL2
@@ -99,7 +109,7 @@ rd_disk:
   ADD.dw     A0, 0x00000004
   ADD.dw     A7, 0x00000004
   STR.dw     A7, [0x0002011C]
-  DEC        XL4
+  DEC        X4
   JMP        NZ, rd_disk
   XOR		 EX1, EX1
   COPY 		 A0, EX1

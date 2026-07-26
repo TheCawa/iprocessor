@@ -3,7 +3,7 @@
 .text
 main:
   CLI              
-  LDI.dw     SP, 0xFFFF0000
+  LDI.dw     SP, 0x000FFF00
  
 main2:
   LDI.dw     IX, hello
@@ -26,7 +26,7 @@ main2:
   
 initmsg:
   XOR 		 FL, FL
-  LOD.b      XL1, [IX - 3]
+  LOD.b      XL1, [IX]
   STR.b      XL1, [0x00020018]
   INC		 IX
   DEC 		 XL2

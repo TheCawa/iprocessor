@@ -3,7 +3,7 @@
 .text
 main:
   CLI              
-  LDI.dw     SP, 0xFF000000
+  LDI.dw     SP, 0x000FFF00
  
 main2:
   LDI.dw     IX, hello
@@ -14,7 +14,7 @@ main2:
   
 initmsg:
   XOR 		 FL, FL
-  LOD.b      XL1, [IX - 3]
+  LOD.b      XL1, [IX]
   STR.b      XL1, [0x00020018]
   INC		 IX
   DEC 		 XL2
@@ -23,7 +23,7 @@ initmsg:
   
 memtest:
   XOR 		 EX7, EX7
-  LOD 		 EX7, [0x00020700]
+  LOD.dw 	 EX7, [0x0002000C]
   HALT
   
 .data

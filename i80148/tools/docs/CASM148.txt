@@ -1,0 +1,249 @@
+CASM148 - Cawas Assembler for i80148
+
+	-# Version: 0.1
+	-# Target: i80148 (32-bit flat architecture)
+	-# Output: flat binary (*.bin) + Logisim hex (*.hex)
+	-# Byte order: BIG ENDIAN
+
+Usage:
+	python CASM148.py <input.asm> [-o output.bin]
+
+	-# If -o is omitted, writes output.bin and output.hex in current directory.
+	-# The *.hex file always has the same base name as the *.bin file.
+	-# Comments start with ';' and continue to end of line.
+
+
+Registers:
+	#Name - #ID  - #Width
+	R0    - 00h  - Dword (hardwired zero)
+	EX1   - 01h  - Dword
+	EX2   - 02h  - Dword
+	EX3   - 03h  - Dword
+	EX4   - 04h  - Dword
+	EX5   - 05h  - Dword
+	EX6   - 06h  - Dword
+	EX7   - 07h  - Dword
+	X1    - 08h  - Word  (low word of EX1)
+	X2    - 09h  - Word  (low word of EX2)
+	X3    - 0Ah  - Word  (low word of EX3)
+	X4    - 0Bh  - Word  (low word of EX4)
+	X5    - 0Ch  - Word  (low word of EX5)
+	X6    - 0Dh  - Word  (low word of EX6)
+	X7    - 0Eh  - Word  (low word of EX7)
+	XL1   - 0Fh  - Byte  (low byte of EX1)
+	XL2   - 10h  - Byte  (low byte of EX2)
+	XL3   - 11h  - Byte  (low byte of EX3)
+	XL4   - 12h  - Byte  (low byte of EX4)
+	XL5   - 13h  - Byte  (low byte of EX5)
+	XL6   - 14h  - Byte  (low byte of EX6)
+	XL7   - 15h  - Byte  (low byte of EX7)
+	IC    - 16h  - Dword
+	FL    - 17h  - Byte
+	SP    - 18h  - Dword
+	BP    - 19h  - Dword
+	IX    - 1Ah  - Dword
+	IY    - 1Bh  - Dword
+	A0-A7 - 1Ch-23h - Dword
+	IDTR  - 24h  - Dword
+
+	-# XLn aliases write ONLY the low byte of EXn; the upper 3 bytes are preserved.
+	-# Reading XLn returns the low byte zero-extended into the destination.
+	-# Do NOT use XLn as a temporary register if the parent EXn still holds live data.
+
+
+Number formats:
+	#Prefix - #Base - #Example
+	0x      - 16    - 0x1A
+	0b      - 2     - 0b1010
+	(none)  - 10    - 42
+
+
+Directives:
+	#Directive - #Description
+	.ORG addr  - Set current assembly address (affects label values)
+	.TEXT      - Switch to text segment (code)
+	.DATA      - Switch to data segment (initialized data)
+	.BSS       - Switch to bss segment (zeroed data)
+	.DB ...    - Emit bytes
+	.DW ...    - Emit big-endian words
+	.DD ...    - Emit big-endian dwords
+
+	-# Segments are concatenated in the final binary as text + data + bss.
+	-# .DB accepts numbers, character constants and quoted strings with escapes:
+	-#     \n \r \t \0 \\ 
+	-# Strings are NOT null-terminated unless you append , 0 manually.
+
+
+Conditions:
+	#Name - #ID  - #Logic
+	UNC   - 00h  - Unconditional
+	CF    - 01h  - Carry flag set
+	BF    - 02h  - Borrow flag set
+	SF    - 03h  - Sign flag set
+	OF    - 04h  - Overflow flag set
+	ZF    - 05h  - Zero flag set
+	NZ    - 06h  - Not zero
+	GR    - 07h  - Greater (signed)
+	GE    - 08h  - Greater or equal (signed)
+	LS    - 09h  - Less (signed)
+	LE    - 0Ah  - Less or equal (signed)
+	EQ    - 0Bh  - Equal
+	NE    - 0Ch  - Not equal
+
+	-# Synonyms: C=CF, B=BF, S=SF, O=OF, Z=ZF, G=GR, L=LS, E=EQ.
+
+
+Instruction encoding summary:
+	#Type - #Length - #Format
+	S0    - 1B      - <OP>
+	S1    - 2B      - <OP> <rD>
+	S2    - 2B      - <OP> <rS>
+	S3    - 2B      - <OP> <rS/D>
+	S4    - 2B      - <OP> <imm8>
+	S5    - 3B      - <OP> <imm16>
+	S6    - 5B      - <OP> <imm32>
+	A0    - 4B      - <OP> <SF> <rS/D> <rS>
+	A1    - 4B      - <OP> <SF> <rS/D> <imm8>
+	A2    - 5B      - <OP> <SF> <rS/D> <imm16>
+	A3    - 7B      - <OP> <SF> <rS/D> <imm32>
+	J0    - 6B      - <OP> <COND> <imm32>
+	J1    - 3B      - <OP> <COND> <rS>
+	H0    - 3B      - <OP> <rS/D> <disp8>
+	D0    - 4B      - <OP> <SF> <rD> <rS>
+	D1B   - 4B      - <OP> <SF> <rD> <imm8>
+	D1W   - 5B      - <OP> <SF> <rD> <imm16>
+	D1DW  - 7B      - <OP> <SF> <rD> <imm32>
+	D2F   - 7B      - <OP> <SF> <rS> <Addr32>
+	D2S   - 5B      - <OP> <SF> <rS> <rB>:<rA>
+	D2R   - 4B      - <OP> <SF> <rS> <rA>
+	D2SD  - 6B      - <OP> <SF> <rS> <rB>:<rA> <disp8>
+	D2RD  - 5B      - <OP> <SF> <rS> <rA> <disp8>
+	D3F   - 7B      - <OP> <SF> <rD> <Addr32>
+	D3S   - 5B      - <OP> <SF> <rD> <rB>:<rA>
+	D3R   - 4B      - <OP> <SF> <rD> <rA>
+	D3SD  - 6B      - <OP> <SF> <rD> <rB>:<rA> <disp8>
+	D3RD  - 5B      - <OP> <SF> <rD> <rA> <disp8>
+
+	-# For STR/LOD the assembler auto-selects the smallest addressing mode.
+	-# Memory operands MUST be enclosed in square brackets.
+
+
+Addressing modes for STR/LOD:
+	#Mode - #Syntax example         - #Encoding
+	F     - [0x00020018]            - flat 32-bit address
+	R     - [IX]                    - register indirect
+	RD    - [IX + 4]  [IX - 4]      - register indirect with disp8
+	S     - [IX:IY]                 - base:offset (two registers)
+	SD    - [IX:IY + 4]             - base:offset with disp8
+
+	-# Spaces around '+'/'-' are optional: [IX+4] and [IX + 4] are equivalent.
+	-# Negative displacement is written as [IX - 4].
+
+
+Arithmetic and logic instructions:
+	#Mnemonic - #Description
+	ADD       - Addition
+	ADC       - Addition with carry
+	SUB       - Subtraction
+	SBB       - Subtraction with borrow
+	MUL       - Unsigned multiply
+	IMUL      - Signed multiply
+	DIV       - Unsigned divide
+	IDIV      - Signed divide
+	REM       - Unsigned remainder
+	IREM      - Signed remainder
+	AND       - Bitwise AND
+	OR        - Bitwise OR
+	XOR       - Bitwise XOR
+	NOT       - Bitwise NOT
+	INC       - Increment by one
+	DEC       - Decrement by one
+	LSL       - Logical shift left
+	LSR       - Logical shift right
+	ASR       - Arithmetic shift right
+	ROL       - Rotate left
+	ROR       - Rotate right
+
+	-# ADD/SUB/ADC/SBB/MUL/IMUL/DIV/IDIV/REM/IREM/AND/OR/XOR/CMP/ICMP support
+	-# register-register (.dw default) and immediate suffixes .b .w .dw .
+	-# Example: ADD EX1, EX2  /  ADD.B XL1, 5  /  CMP.DW EX1, 0x1000
+
+
+Control flow:
+	#Mnemonic - #Description
+	JMP       - Relative jump (imm32 offset from IC after instruction)
+	JMPR      - Jump to address in register
+	JMA       - Absolute jump (imm32 target address)
+	CALL      - Relative subroutine call
+	CALLR     - Call address in register
+	CLABS     - Absolute subroutine call
+	RET       - Return from subroutine
+
+	-# Conditional forms use dot suffix: JMP.EQ label, JMP.NZ label, JMP.GR label, etc.
+	-# Conditions also work with JMPR and JMA: JMPR.EQ reg, JMA.NE label.
+
+
+Data movement:
+	#Mnemonic - #Description
+	COPY      - Copy register to register
+	LDI.B     - Load 8-bit immediate
+	LDI.W     - Load 16-bit immediate
+	LDI.DW    - Load 32-bit immediate
+	STR.B     - Store byte to memory
+	STR.W     - Store word to memory
+	STR.DW    - Store dword to memory
+	LOD.B     - Load byte from memory
+	LOD.W     - Load word from memory
+	LOD.DW    - Load dword from memory
+	PUSH      - Push register on stack
+	POP       - Pop register from stack
+
+	-# PUSH/POP use SP and are dword-sized.
+
+
+System instructions:
+	#Mnemonic - #Description
+	NOP       - No operation
+	HALT      - Stop CPU clock
+	WAIT      - Halt until interrupt
+	CLI       - Clear interrupt enable
+	STI       - Set interrupt enable
+	INT       - Software interrupt (imm8 vector)
+	IRET      - Return from interrupt
+
+
+Labels:
+	-# Labels are identifiers followed by ':' and may appear on their own line
+	-# or at the start of an instruction line.
+	-# Label names are case-insensitive and may contain letters, digits and '_'.
+	-# Labels are resolved in the first pass; forward references are supported.
+
+
+Example:
+		.ORG 0x00050000
+		.text
+	main:
+		LDI.DW SP, 0x00080000
+		LDI.DW IX, msg
+		CALL print_string
+		HALT
+
+	print_string:
+		LOD.B XL1, [IX]
+		CMP.B XL1, 0
+		JMP.EQ ps_done
+		STR.B XL1, [0x00020018]
+		INC IX
+		JMA print_string
+	ps_done:
+		RET
+
+		.data
+	msg:    .db "Hello, World!", 0
+
+
+Known limitations:
+	-# No macro processor.
+	-# No expression evaluator in operands: use a single number/label/register.
+	-# String data only supports escape sequences listed under .DB.
+	-# CALL and JMP compute relative offsets automatically; use JMA for absolute jumps.

@@ -3,16 +3,18 @@ Specs:
 	RAM - 16M (up to 4096M)
 	
 Memory regions:
-	BANK 0000h:
-	#START    - #END      - #NAME   
-	
-	00000000h - 0000FFFFh - BIOS/VBIOS ROM
-	00010000h - 0001FFFFh - CMOS
-	00020000h - 0002FFFFh - MMIO
-	00030000h - 0003FFFFh - DEVICE CALLS
-	00040000h - 0004FFFFh - BIOS RAM
-	00050000h - FFFFFFFFh - USER RAM
-	
+    BANK 0000h:
+    #START    - #END      - #MB - #NAME   
+    
+    00000000h - 0000FFFFh - 00h - BIOS/VBIOS ROM
+    00010000h - 0001FFFFh - 00h - CMOS
+    00020000h - 0002FFFFh - 00h - MMIO
+    00030000h - 0003FFFFh - 00h - DEVICE CALLS
+    00040000h - 0004FFFFh - 00h - BIOS RAM
+    00050000h - FFFFFFFFh - 00h - USER RAM
+    
+    00100000h - 0010FFFFh - 00h - VRAM (text/graphics frame buffer)
+
 	-# IMPORTANT! Regions 00030000h-0003FFFFh, 00040000h-0004FFFFh and 00050000h-FFFFFFFFh it's more like it's just formalized!
 	
 	BANK 0001h - Additional data
@@ -32,44 +34,73 @@ I/O registers map:
 	0007h - 00020007h - R/W - BANK
 	
 	0008h - 00020008h - R/W - KBD_CTRL
-	0009h - 0002000Ah - R   - KBD_SCANCODE
-	000Ah - 0002000Bh - R   - KBD_ASCII
-	000Bh - 0002000Ch - R   - KBD_MODIFIER
+	0009h - 00020009h - R   - KBD_SCANCODE
+	000Ah - 0002000Ah - R   - KBD_ASCII
+	000Bh - 0002000Bh - R   - KBD_MODIFIER
 	
-U   000Ch - 0002000Dh - R 	- RAM_SIZE
-	000Dh - 0002000Eh - ??? - Reserved
-	000Eh - 0002000Fh - R 	- CPU_FEATURES
-	000Fh - 00020010h - R/W - BOOT_DEVICE
-	0010h - 00020011h - R/W - SYS_FLAGS
-	0011h - 00020012h - R   - ERROR_CODE
+U   000Ch - 0002000Ch - R 	- RAM_SIZE
+	000Dh - 0002000Dh - ??? - Reserved
+	000Eh - 0002000Eh - ??? - Reserved
+	000Fh - 0002000Fh - R 	- CPU_FEATURES
+	0010h - 00020010h - R/W - BOOT_DEVICE
+	0011h - 00020011h - R/W - SYS_FLAGS
+	0012h - 00020012h - R   - ERROR_CODE
 	
-	0012h - 00020000h - R 	- RTC_SEC
-	0013h - 00020013h - R 	- RTC_MIN
-	0014h - 00020014h - R 	- RTC_HOUR
-	0015h - 00020015h - R 	- RTC_DAY
-	0016h - 00020016h - R 	- RTC_MONTH
-	0017h - 00020017h - R 	- RTC_YEAR
+	0013h - 00020013h - R   - RTC_SEC
+	0014h - 00020014h - R   - RTC_MIN
+	0015h - 00020015h - R   - RTC_HOUR
+	0016h - 00020016h - R   - RTC_DAY
+	0017h - 00020017h - R   - RTC_MONTH
+	0018h - 00020018h - R   - RTC_YEAR
+	0019h - 00020019h - R   - RTC_WEEKDAY
+	001Ah - 0002001Ah - R   - RTC_CENTURY
+	001Bh - 0002001Bh - R   - RTC_UNIX_TIME_LO
+	001Ch - 0002001Ch - R   - RTC_UNIX_TIME_HI
 	
-U   0018h - 00020018h - W   - TERM_OUT
-U	0019h - 00020019h - W   - TERM_RESET
+U   001Dh - 0002001Dh - W   - TERM_OUT
+U	001Eh - 0002001Eh - W   - TERM_RESET
+	001Fh - 0002001Fh - R/W - VC_MODE
 	
-	001Ah - 0002001Ah - R/W - XPB_CONTROL
-	001Bh - 0002001Bh - W   - XPB_FIFO_RESET
+	0020h - 00020020h - R/W - PIT_COMMAND
+	0021h - 00020021h - R/W - PIT_CH0
+	0022h - 00020022h - R/W - PIT_CH1
+	0023h - 00020023h - R/W - PIT_CH2
+	0024h - 00020024h - R   - PIT_STATUS
+	0025h - 00020025h - ??? - Reserved
+	0026h - 00020026h - ??? - Reserved
+	0027h - 00020027h - ??? - Reserved
 	
-	XPB1:
-U	0010h - 00020110h - R   - DISK_STATUS
-U   0011h - 00020111h - R/W - DISK_CTRL
-U   0012h - 00020112h - R/W - DISK_LBA
-    0013h - 00020113h - ??? - Reserved
-R   0014h - 00020114h - R/W - DISK_BUFFER
-R   0015h - 00020115h - R/W - DISK_COUNT
-    0016h - 00020116h - R/W - DISK_DRIVE
-	0017h - 00020117h - R/W - DISK_IRQ
-	0018h - 00020118h - R/W - DISK_SIZE
-	0019h - 00020119h - R/W - LBA_SIZE
-U	001Ah - 0002011Ah - R   - DISK_DOUT
-U	001Bh - 0002011Bh - R/W - DISK_DIN
-U   001Ch - 0002011Ch - R/W - BUFFER_OFFSET
+	0028h - 00020028h - R   - MOUSE_X
+	0029h - 00020029h - R   - MOUSE_Y
+	002Ah - 0002002Ah - R   - MOUSE_BTN
+	002Bh - 0002002Bh - R   - MOUSE_DELTA_X
+	002Ch - 0002002Ch - R   - MOUSE_DELTA_Y
+	002Dh - 0002002Dh - ??? - Reserved
+	002Eh - 0002002Eh - ??? - Reserved
+	002Fh - 0002002Fh - ??? - Reserved
+	
+	0030h - 00020030h - R/W - DEV_CLASS_COUNT
+	0031h - 00020031h - R/W - DEV_CLASS_SELECT
+	0032h - 00020032h - R   - DEV_CLASS_CLASS
+	0033h - 00020033h - R   - DEV_CLASS_VENDOR
+	0034h - 00020034h - R   - DEV_CLASS_NAME
+	   ...
+	0053h - 00020053h - R   - DEV_CLASS_NAME_END
+	
+	XPB1 (Disk controller):
+U	0100h - 00020110h - R   - DISK_STATUS
+U   0101h - 00020111h - R/W - DISK_CTRL
+U   0102h - 00020112h - R/W - DISK_LBA
+    0103h - 00020113h - ??? - Reserved
+R   0104h - 00020114h - R/W - DISK_BUFFER
+R   0105h - 00020115h - R/W - DISK_COUNT
+    0106h - 00020116h - R/W - DISK_DRIVE
+	0107h - 00020117h - R/W - DISK_IRQ
+	0108h - 00020118h - R/W - DISK_SIZE
+	0109h - 00020119h - R/W - LBA_SIZE
+U	010Ah - 0002011Ah - R   - DISK_DOUT
+U	010Bh - 0002011Bh - R/W - DISK_DIN
+U   010Ch - 0002011Ch - R/W - BUFFER_OFFSET
 
 	-# WARNING! BANK#0001 and XPB#01 always reserved for disk controller
 	
@@ -115,8 +146,51 @@ XPB PROTOCOLS:
 		-# DSR - Device service registers
 	
 IRQ:
-	0x00 - TIMER
-	0x01 - EXCEPTION
-	0x02 - XPB_DEVICE
-	0x03 - KBD
+	0x20 - TIMER
+	0x21 - KEYBOARD
+	0x22 - MOUSE
 	
+	-# Exceptions are delivered through the IDT like regular interrupts.
+	-# Vector is calculated as IDTR + (vector << 2).
+
+Device classes:
+	00h - System
+	01h - Storage
+	02h - Input
+	03h - Timer
+	04h - RTC
+	05h - Video
+	FFh - Unknown
+	
+Device vendors:
+	00h - None
+	01h - System
+
+Disk controller commands (DISK_CTRL):
+	00h - Idle / reset
+	01h - Acknowledge ready
+	02h - Read single sector
+	03h - Read multiple sectors (DISK_COUNT)
+	04h - Write single sector
+	05h - Write multiple sectors (DISK_COUNT)
+	08h - Write DISK_DIN dword into sector buffer at BUFFER_OFFSET
+	10h - Format (zero-fill DISK_COUNT sectors starting at DISK_LBA)
+
+Disk status bits:
+	Bit 0 - BUSY
+	Bit 1 - ERROR
+
+Video cards (selectable via emulator GUI or --vc command line option):
+	"default"      - Combined text/graphics card, mode selected by VC_MODE
+	"default-text" - 80x25 16-color text mode only
+	"default-mono" - 80x25 green-phosphor monochrome text mode only
+
+Video card "default" modes (selected by VC_MODE 0002001Fh):
+	00h - 80x25 text, 8x8 font, 16-color VGA palette (640x200)
+	01h - 320x200 256-color graphics (legacy Mode 13h-like)
+	10h - 40x30 text, 8x8 font, 16 colors (320x240)
+	11h - 80x60 text, 8x8 font, 16 colors (640x480)
+	12h - 80x30 text, 8x8 font stretched to 8x16, 16 colors (640x480)
+	20h - 320x240 256-color graphics
+	21h - 640x480 256-color graphics
+	22h - 800x600 256-color graphics

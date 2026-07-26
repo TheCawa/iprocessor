@@ -145,6 +145,15 @@ slot_next:
     CMP EX1, R0
     JMP.NE disk_read_error
     
+    ; Delay ~1 second before handing control to the user program so that
+    ; POST messages stay visible on fast emulators.
+    LDI.DW EX7, 2000
+    STR.DW EX7, [0x00020031]
+cbios_delay:
+    LOD.DW EX7, [0x00020031]
+    CMP.DW EX7, 1000
+    JMP.GR cbios_delay
+
     STR.B R0, [0x00020019]
     JMA 0x00050000
 
@@ -196,7 +205,7 @@ disk_status_error:
 print_string:
     XOR FL, FL
 print_string_loop:
-    LOD.B XL1, [IX-3]
+    LOD.B XL1, [IX]
     STR.B XL1, [0x00020018]
     INC IX
     DEC XL2
@@ -290,7 +299,7 @@ print_hex_word:
 
 read_disk:
     XOR A7, A7
-    LDI.W X4, 256
+    LDI.W X4, 1024
 
 read_disk_loop_sectors:
     STR.DW EX2, [0x00020112]

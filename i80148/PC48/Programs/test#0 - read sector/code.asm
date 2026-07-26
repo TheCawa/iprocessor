@@ -13,7 +13,7 @@
 .text
 init:
   CLI              
-  LDI.dw     SP, 0xFFFF0000
+  LDI.dw     SP, 0x000FFF00
  
 start:
   LDI.dw 	 IX, 0x00040000	; Disk destination
@@ -22,7 +22,7 @@ start:
   LDI.dw     EX3, 0x00000001	; Amount of LBA
   LDI.dw     EX7, 0x00000002	; Read sector
   STR.dw     EX7, [0x00020111]
-  LDI.w 	 X4, 0x0100
+  LDI.b 	 XL4, 0x80
   CALL 		 disk_cycle
   LDI.b  	 XL6, 0x04
   LDI.b      XL5, 0x10
