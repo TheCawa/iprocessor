@@ -1,6 +1,6 @@
 ; Test program: switch video modes and draw on screen.
 
-.org 0x00050000
+.org 0x00060000
 
 .text
 main:

@@ -33,7 +33,12 @@ main:
   LDI.dw     IX, lddisk
   CALL 		 initmsg
   
-  LDI.dw 	 IX, 0x00050000	; Disk destination
+  ; If a program was already loaded into RAM, run it directly.
+  LOD.dw     EX7, [0x00060000]
+  CMP.dw     EX7, 0x00000000
+  JMP        NZ, run_ram
+
+  LDI.dw 	 IX, 0x00060000	; Disk destination
   COPY       A0, IX
   XOR 		 EX2, EX2			; Zero sector
   LDI.dw     EX3, 0x00000001	; Amount of LBA
@@ -43,6 +48,7 @@ main:
   LDI.w 	 X4, 0x0400
   CALL 		 rd_disk
   
+run_ram:
   STR.b 	 R0, [0x00020019]	; Reset terminal
   
   ; Delay ~1 second using PIT so POST messages remain readable.
@@ -61,7 +67,7 @@ bios_delay:
   XOR		 X6, X6
   XOR		 X7, X7
   
-  JMA 		 0x00050000 		; Jump to work space
+  JMA 		 0x00060000 		; Jump to work space
   
 initmsg:
   XOR 		 FL, FL

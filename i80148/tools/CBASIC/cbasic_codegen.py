@@ -53,7 +53,7 @@ class CodeGenerator:
 
     def generate(self, tree):
         self.asm.append(".text")
-        self.asm.append(".ORG 0x00050000")
+        self.asm.append(".ORG 0x00060000")
         self.emit("LDI.DW SP, 0x00080000")
         self.emit("COPY BP, SP")
         self.asm.append("")

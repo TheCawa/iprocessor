@@ -1,6 +1,6 @@
 ; Test program: write a marker to disk LBA 1, clear memory, then read it back.
 
-.org 0x00050000
+.org 0x00060000
 
 .text
 main:

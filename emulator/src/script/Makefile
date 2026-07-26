@@ -27,12 +27,13 @@ C_SOURCES   = $(wildcard $(SRC_DIR_SYSTEM)/*.c)
 C_SOURCES  += $(wildcard $(SRC_DIR_VC)/*.c)
 C_SOURCES  += $(wildcard $(SRC_DIR_CPU)/*/*.c)
 
-# C++ sources: emulator framework and ImGui
-GUI_CPP_SOURCES = $(SRC_DIR_EMU)/gui_main.cpp $(SRC_DIR_EMU)/gui_emulator.cpp $(wildcard $(SRC_DIR_EMU)/imgui*.cpp)
+# C++ sources: emulator framework, ImGui, and optional CPU GUI helpers
+CPU_GUI_CPP_SOURCES = $(wildcard $(SRC_DIR_CPU)/*/*.cpp)
+GUI_CPP_SOURCES = $(SRC_DIR_EMU)/gui_main.cpp $(SRC_DIR_EMU)/gui_emulator.cpp $(wildcard $(SRC_DIR_EMU)/imgui*.cpp) $(CPU_GUI_CPP_SOURCES)
 CONSOLE_CPP_SOURCES = $(SRC_DIR_EMU)/console_main.cpp
 
 C_OBJECTS       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(C_SOURCES))
-GUI_OBJECTS     = $(patsubst $(SRC_DIR_EMU)/%.cpp, $(BUILD_DIR)/%.o, $(GUI_CPP_SOURCES))
+GUI_OBJECTS     = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(GUI_CPP_SOURCES))
 CONSOLE_OBJECTS = $(patsubst $(SRC_DIR_EMU)/%.cpp, $(BUILD_DIR)/console_%.o, $(notdir $(CONSOLE_CPP_SOURCES)))
 
 SDL_DLL_SRC = $(DLL_DIR)\SDL2.dll
@@ -43,9 +44,13 @@ SDL_DLL_DST = $(DIST_DIR)\SDL2.dll
 all: $(DIST_DIR) $(TARGET) deploy_dlls
 	@echo [SUCCESS] Build complete. Executable is in emulator/dist/
 
-console: $(DIST_DIR) $(BUILD_DIR) $(C_OBJECTS) $(BUILD_DIR)/console_main.o
+console: $(DIST_DIR) $(BUILD_DIR) $(C_OBJECTS) $(BUILD_DIR)/cpu_i80148_gui_console.o $(BUILD_DIR)/console_main.o
 	@echo [LINK] Console emulator...
-	$(CXX) $(C_OBJECTS) $(BUILD_DIR)/console_main.o -o $(DIST_DIR)/console_emu.exe $(LDFLAGS)
+	$(CXX) $(C_OBJECTS) $(BUILD_DIR)/cpu_i80148_gui_console.o $(BUILD_DIR)/console_main.o -o $(DIST_DIR)/console_emu.exe $(LDFLAGS)
+
+$(BUILD_DIR)/cpu_i80148_gui_console.o: $(SRC_DIR_CPU)/i80148/cpu_i80148_gui.cpp | $(BUILD_DIR)
+	@mkdir "$(subst /,\,$(dir $@))" >nul 2>&1 || (exit /b 0)
+	$(CXX) $(CXXFLAGS) -DNO_IMGUI -c $< -o $@
 
 $(BUILD_DIR):
 	@if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)"
@@ -62,8 +67,8 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	@mkdir "$(subst /,\,$(dir $@))" >nul 2>&1 || (exit /b 0)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Pattern rules for C++ emulator sources
-$(BUILD_DIR)/%.o: $(SRC_DIR_EMU)/%.cpp | $(BUILD_DIR)
+# Pattern rules for C++ sources (emulator framework, ImGui, and CPU GUI helpers)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	@mkdir "$(subst /,\,$(dir $@))" >nul 2>&1 || (exit /b 0)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 

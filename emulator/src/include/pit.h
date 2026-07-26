@@ -70,6 +70,11 @@ int pit_service_irq(Cpu* cpu);
 // Clear any pending IRQ (used on CPU reset).
 void pit_reset_pending(Cpu* cpu);
 
+// State serialization helpers (used by save-state/load-state).
+size_t pit_state_size(void);
+void   pit_save_state(Cpu* cpu, void* out_buf);
+void   pit_load_state(Cpu* cpu, const void* in_buf);
+
 #ifdef __cplusplus
 }
 #endif

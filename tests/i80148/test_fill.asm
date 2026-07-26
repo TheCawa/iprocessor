@@ -1,4 +1,4 @@
-.org 0x00050000
+.org 0x00060000
 
 start:
     ; Switch to graphics mode

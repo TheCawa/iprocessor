@@ -15,7 +15,7 @@
 ;   IX  = string pointer
 ;   X2  = string length (word, aliased to EX2; re-initialized after print_string)
 
-.org 0x00050000
+.org 0x00060000
 
 .text
 main:

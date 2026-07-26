@@ -43,6 +43,9 @@ uint8_t  disk_read_byte(Cpu* cpu);
 // Release dynamically allocated disk image data for all drives.
 void disk_free_image(Cpu* cpu);
 
+// Release image data for a single drive (used when ejecting a disk image).
+void disk_drive_free_image(DiskDrive* drive);
+
 // Keyboard input helper.
 uint8_t kbd_read_ascii(Cpu* cpu);
 

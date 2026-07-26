@@ -20,6 +20,7 @@
 #include "emulator.hpp"
 #include "system.h"
 #include "input.h"
+#include "pit.h"
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_sdlrenderer2.h"
@@ -79,6 +80,25 @@ static bool open_file_dialog(char* out_path, size_t max_len, const char* filter,
     ofn.lpstrTitle = title;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
     if (!GetOpenFileNameA(&ofn)) return false;
+    strncpy(out_path, filename, max_len - 1);
+    out_path[max_len - 1] = '\0';
+    return true;
+}
+
+static bool save_file_dialog(char* out_path, size_t max_len, const char* filter, const char* title, const char* def_ext) {
+    char filename[MAX_PATH] = "";
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = nullptr;
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = sizeof(filename);
+    ofn.lpstrFilter = filter;
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = title;
+    ofn.lpstrDefExt = def_ext;
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
+    if (!GetSaveFileNameA(&ofn)) return false;
     strncpy(out_path, filename, max_len - 1);
     out_path[max_len - 1] = '\0';
     return true;
@@ -207,6 +227,188 @@ bool emulator_switch_vc(Cpu* cpu, const VideoCard* new_vc, SDL_Renderer* rendere
     return true;
 }
 
+#define STATE_MAGIC   "IPSTATE"
+#define STATE_VERSION 1
+
+static bool save_machine_state(Cpu* cpu, const char* filename) {
+    FILE* f = fopen(filename, "wb");
+    if (!f) return false;
+
+    bool ok = true;
+    const char* backend_name = cpu->backend ? cpu->backend->name : "";
+    uint32_t backend_name_len = (uint32_t)strlen(backend_name);
+    uint32_t backend_state_size = cpu->backend ? (uint32_t)cpu->backend->state_size : 0;
+    uint32_t ram_size = (uint32_t)cpu->mem_size;
+    uint32_t pit_size = (uint32_t)pit_state_size();
+    uint32_t mode_addr = 0x0002001A;
+    uint8_t video_mode = (mode_addr < cpu->mem_size) ? cpu->mem[mode_addr] : 0x00;
+
+    ok = ok && fwrite(STATE_MAGIC, 1, 8, f) == 8;
+    uint32_t version = STATE_VERSION;
+    ok = ok && fwrite(&version, sizeof(version), 1, f) == 1;
+    ok = ok && fwrite(&backend_name_len, sizeof(backend_name_len), 1, f) == 1;
+    ok = ok && fwrite(backend_name, 1, backend_name_len, f) == backend_name_len;
+    ok = ok && fwrite(&backend_state_size, sizeof(backend_state_size), 1, f) == 1;
+    ok = ok && fwrite(&ram_size, sizeof(ram_size), 1, f) == 1;
+    ok = ok && fwrite(&pit_size, sizeof(pit_size), 1, f) == 1;
+
+    // RAM
+    if (cpu->mem && ram_size > 0) {
+        ok = ok && fwrite(cpu->mem, 1, ram_size, f) == ram_size;
+    }
+    // Backend state
+    if (cpu->backend_data && backend_state_size > 0) {
+        ok = ok && fwrite(cpu->backend_data, 1, backend_state_size, f) == backend_state_size;
+    }
+    // CPU common state
+    ok = ok && fwrite(&cpu->halted, sizeof(cpu->halted), 1, f) == 1;
+    ok = ok && fwrite(&cpu->irq_enabled, sizeof(cpu->irq_enabled), 1, f) == 1;
+    ok = ok && fwrite(&cpu->screen_dirty, sizeof(cpu->screen_dirty), 1, f) == 1;
+    ok = ok && fwrite(&cpu->term_cursor_x, sizeof(cpu->term_cursor_x), 1, f) == 1;
+    ok = ok && fwrite(&cpu->term_cursor_y, sizeof(cpu->term_cursor_y), 1, f) == 1;
+    ok = ok && fwrite(&cpu->term_attr, sizeof(cpu->term_attr), 1, f) == 1;
+    ok = ok && fwrite(&cpu->kbd_buffer_len, sizeof(cpu->kbd_buffer_len), 1, f) == 1;
+    ok = ok && fwrite(&cpu->kbd_buffer_pos, sizeof(cpu->kbd_buffer_pos), 1, f) == 1;
+    ok = ok && fwrite(&cpu->kbd_irq_pending, sizeof(cpu->kbd_irq_pending), 1, f) == 1;
+    ok = ok && fwrite(cpu->kbd_buffer, 1, sizeof(cpu->kbd_buffer), f) == sizeof(cpu->kbd_buffer);
+    ok = ok && fwrite(&cpu->mouse_x, sizeof(cpu->mouse_x), 1, f) == 1;
+    ok = ok && fwrite(&cpu->mouse_y, sizeof(cpu->mouse_y), 1, f) == 1;
+    ok = ok && fwrite(&cpu->mouse_delta_x, sizeof(cpu->mouse_delta_x), 1, f) == 1;
+    ok = ok && fwrite(&cpu->mouse_delta_y, sizeof(cpu->mouse_delta_y), 1, f) == 1;
+    ok = ok && fwrite(&cpu->mouse_buttons, sizeof(cpu->mouse_buttons), 1, f) == 1;
+    ok = ok && fwrite(&cpu->mouse_irq_pending, sizeof(cpu->mouse_irq_pending), 1, f) == 1;
+    ok = ok && fwrite(&cpu->disk_current_drive, sizeof(cpu->disk_current_drive), 1, f) == 1;
+    ok = ok && fwrite(&cpu->devclass_selected, sizeof(cpu->devclass_selected), 1, f) == 1;
+    ok = ok && fwrite(&video_mode, sizeof(video_mode), 1, f) == 1;
+
+    // Disk image paths
+    for (int i = 0; i < DISK_MAX_DRIVES; i++) {
+        uint32_t len = (uint32_t)strlen(cpu->disk_drives[i].image_path);
+        ok = ok && fwrite(&len, sizeof(len), 1, f) == 1;
+        if (len > 0) {
+            ok = ok && fwrite(cpu->disk_drives[i].image_path, 1, len, f) == len;
+        }
+    }
+
+    // PIT state
+    if (pit_size > 0 && cpu->pit_data) {
+        std::vector<uint8_t> pit_buf(pit_size);
+        pit_save_state(cpu, pit_buf.data());
+        ok = ok && fwrite(pit_buf.data(), 1, pit_size, f) == pit_size;
+    }
+
+    fclose(f);
+    return ok;
+}
+
+static bool load_machine_state(Cpu* cpu, const char* filename, std::vector<uint8_t>& memory) {
+    (void)memory;
+    FILE* f = fopen(filename, "rb");
+    if (!f) return false;
+
+    char magic[8] = {0};
+    if (fread(magic, 1, 8, f) != 8 || strncmp(magic, STATE_MAGIC, 7) != 0) {
+        fclose(f);
+        return false;
+    }
+
+    uint32_t version = 0;
+    uint32_t backend_name_len = 0;
+    uint32_t backend_state_size = 0;
+    uint32_t ram_size = 0;
+    uint32_t pit_size = 0;
+    if (fread(&version, sizeof(version), 1, f) != 1 || version != STATE_VERSION ||
+        fread(&backend_name_len, sizeof(backend_name_len), 1, f) != 1 || backend_name_len >= 256 ||
+        fread(&backend_state_size, sizeof(backend_state_size), 1, f) != 1 ||
+        fread(&ram_size, sizeof(ram_size), 1, f) != 1 ||
+        fread(&pit_size, sizeof(pit_size), 1, f) != 1) {
+        fclose(f);
+        return false;
+    }
+
+    char backend_name[256] = {0};
+    if (fread(backend_name, 1, backend_name_len, f) != backend_name_len) {
+        fclose(f);
+        return false;
+    }
+
+    if (!cpu->backend || strcmp(cpu->backend->name, backend_name) != 0) {
+        fclose(f);
+        return false;
+    }
+
+    bool ok = true;
+    // RAM
+    if (ram_size > 0 && ram_size <= cpu->mem_size && cpu->mem) {
+        ok = ok && fread(cpu->mem, 1, ram_size, f) == ram_size;
+    } else {
+        ok = false;
+    }
+    // Backend state
+    if (backend_state_size > 0 && backend_state_size <= cpu->backend->state_size && cpu->backend_data) {
+        ok = ok && fread(cpu->backend_data, 1, backend_state_size, f) == backend_state_size;
+    } else if (backend_state_size != 0) {
+        ok = false;
+    }
+
+    uint8_t video_mode = 0;
+    // CPU common state
+    ok = ok && fread(&cpu->halted, sizeof(cpu->halted), 1, f) == 1;
+    ok = ok && fread(&cpu->irq_enabled, sizeof(cpu->irq_enabled), 1, f) == 1;
+    ok = ok && fread(&cpu->screen_dirty, sizeof(cpu->screen_dirty), 1, f) == 1;
+    ok = ok && fread(&cpu->term_cursor_x, sizeof(cpu->term_cursor_x), 1, f) == 1;
+    ok = ok && fread(&cpu->term_cursor_y, sizeof(cpu->term_cursor_y), 1, f) == 1;
+    ok = ok && fread(&cpu->term_attr, sizeof(cpu->term_attr), 1, f) == 1;
+    ok = ok && fread(&cpu->kbd_buffer_len, sizeof(cpu->kbd_buffer_len), 1, f) == 1;
+    ok = ok && fread(&cpu->kbd_buffer_pos, sizeof(cpu->kbd_buffer_pos), 1, f) == 1;
+    ok = ok && fread(&cpu->kbd_irq_pending, sizeof(cpu->kbd_irq_pending), 1, f) == 1;
+    ok = ok && fread(cpu->kbd_buffer, 1, sizeof(cpu->kbd_buffer), f) == sizeof(cpu->kbd_buffer);
+    ok = ok && fread(&cpu->mouse_x, sizeof(cpu->mouse_x), 1, f) == 1;
+    ok = ok && fread(&cpu->mouse_y, sizeof(cpu->mouse_y), 1, f) == 1;
+    ok = ok && fread(&cpu->mouse_delta_x, sizeof(cpu->mouse_delta_x), 1, f) == 1;
+    ok = ok && fread(&cpu->mouse_delta_y, sizeof(cpu->mouse_delta_y), 1, f) == 1;
+    ok = ok && fread(&cpu->mouse_buttons, sizeof(cpu->mouse_buttons), 1, f) == 1;
+    ok = ok && fread(&cpu->mouse_irq_pending, sizeof(cpu->mouse_irq_pending), 1, f) == 1;
+    ok = ok && fread(&cpu->disk_current_drive, sizeof(cpu->disk_current_drive), 1, f) == 1;
+    ok = ok && fread(&cpu->devclass_selected, sizeof(cpu->devclass_selected), 1, f) == 1;
+    ok = ok && fread(&video_mode, sizeof(video_mode), 1, f) == 1;
+
+    // Disk image paths
+    for (int i = 0; i < DISK_MAX_DRIVES && ok; i++) {
+        uint32_t len = 0;
+        ok = ok && fread(&len, sizeof(len), 1, f) == 1;
+        if (len >= sizeof(cpu->disk_drives[i].image_path)) {
+            ok = false;
+            break;
+        }
+        cpu->disk_drives[i].image_path[0] = '\0';
+        if (len > 0) {
+            ok = ok && fread(cpu->disk_drives[i].image_path, 1, len, f) == len;
+            cpu->disk_drives[i].image_path[len] = '\0';
+        }
+    }
+
+    // PIT state
+    if (pit_size > 0 && pit_size == pit_state_size() && cpu->pit_data) {
+        std::vector<uint8_t> pit_buf(pit_size);
+        ok = ok && fread(pit_buf.data(), 1, pit_size, f) == pit_size;
+        if (ok) pit_load_state(cpu, pit_buf.data());
+    } else if (pit_size != 0) {
+        ok = false;
+    }
+
+    fclose(f);
+
+    if (ok) {
+        uint32_t mode_addr = 0x0002001A;
+        if (mode_addr < cpu->mem_size) {
+            cpu->mem[mode_addr] = video_mode;
+        }
+        cpu->screen_dirty = true;
+    }
+    return ok;
+}
+
 void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& memory) {
     if (cpu && cpu->backend && !g_current_backend) {
         g_current_backend = cpu->backend;
@@ -245,6 +447,28 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                     }
                 }
             }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Save state...")) {
+                char path[MAX_PATH] = "";
+                if (save_file_dialog(path, sizeof(path),
+                        "Iprocessor state (*.ips)\0*.ips\0All files (*.*)\0*.*\0",
+                        "Save machine state", "ips")) {
+                    if (!save_machine_state(cpu, path)) {
+                        fprintf(stderr, "[ERROR] Failed to save state to %s\n", path);
+                    }
+                }
+            }
+            if (ImGui::MenuItem("Load state...")) {
+                char path[MAX_PATH] = "";
+                if (open_file_dialog(path, sizeof(path),
+                        "Iprocessor state (*.ips)\0*.ips\0All files (*.*)\0*.*\0",
+                        "Load machine state")) {
+                    if (!load_machine_state(cpu, path, memory)) {
+                        fprintf(stderr, "[ERROR] Failed to load state from %s\n", path);
+                    }
+                }
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Reset CPU")) { emulator_reset_cpu(cpu); g_cpu_running = true; }
             if (ImGui::MenuItem("Exit")) { emulator_shutdown(); exit(0); }
             ImGui::EndMenu();
@@ -277,15 +501,81 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                 ImGui::EndCombo();
             }
 
-            char drive_label[32];
-            snprintf(drive_label, sizeof(drive_label), "Drive %d", g_disk_drive_idx);
+            char drive_label[64];
+            const char* drive_name = cpu->disk_drives[g_disk_drive_idx].image_path[0]
+                ? strrchr(cpu->disk_drives[g_disk_drive_idx].image_path, '\\')
+                : nullptr;
+            if (!drive_name) drive_name = cpu->disk_drives[g_disk_drive_idx].image_path[0]
+                ? strrchr(cpu->disk_drives[g_disk_drive_idx].image_path, '/')
+                : nullptr;
+            if (drive_name) drive_name++; else drive_name = "(empty)";
+            snprintf(drive_label, sizeof(drive_label), "Drive %d: %s", g_disk_drive_idx, drive_name);
             if (ImGui::BeginCombo("Disk drive", drive_label)) {
                 for (int i = 0; i < DISK_MAX_DRIVES; i++) {
-                    char label[32];
-                    snprintf(label, sizeof(label), "Drive %d", i);
+                    const char* name = cpu->disk_drives[i].image_path[0]
+                        ? strrchr(cpu->disk_drives[i].image_path, '\\')
+                        : nullptr;
+                    if (!name) name = cpu->disk_drives[i].image_path[0]
+                        ? strrchr(cpu->disk_drives[i].image_path, '/')
+                        : nullptr;
+                    if (name) name++; else name = "(empty)";
+                    char label[64];
+                    snprintf(label, sizeof(label), "Drive %d: %s", i, name);
                     bool selected = (i == g_disk_drive_idx);
                     if (ImGui::Selectable(label, selected)) {
                         g_disk_drive_idx = i;
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Eject")) {
+                disk_drive_free_image(&cpu->disk_drives[g_disk_drive_idx]);
+                cpu->disk_drives[g_disk_drive_idx].image_path[0] = '\0';
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Clear RAM")) {
+                uint32_t ram_start = cpu->backend ? cpu->backend->user_ram_start : 0x00060000;
+                if (ram_start < cpu->mem_size) {
+                    memset(&cpu->mem[ram_start], 0, cpu->mem_size - ram_start);
+                }
+                cpu->screen_dirty = true;
+                if (g_vc && g_vc->reset) {
+                    g_vc->reset(cpu);
+                }
+            }
+
+            ImGui::Separator();
+
+            // Video mode selector for cards that expose the default mode register.
+            struct { const char* name; uint8_t mode; } modes[] = {
+                { "80x25 text",       0x00 },
+                { "40x30 text",       0x10 },
+                { "80x60 text",       0x11 },
+                { "80x30 text (8x16)",0x12 },
+                { "320x200 graphics", 0x01 },
+                { "320x240 graphics", 0x20 },
+                { "640x480 graphics", 0x21 },
+                { "800x600 graphics", 0x22 },
+            };
+            const uint32_t mode_addr = 0x0002001A;
+            uint8_t current_mode = (mode_addr < cpu->mem_size) ? cpu->mem[mode_addr] : 0x00;
+            const char* current_name = modes[0].name;
+            for (int i = 0; i < (int)(sizeof(modes)/sizeof(modes[0])); i++) {
+                if (modes[i].mode == current_mode) {
+                    current_name = modes[i].name;
+                    break;
+                }
+            }
+            if (ImGui::BeginCombo("Screen mode", current_name)) {
+                for (int i = 0; i < (int)(sizeof(modes)/sizeof(modes[0])); i++) {
+                    bool selected = (modes[i].mode == current_mode);
+                    if (ImGui::Selectable(modes[i].name, selected)) {
+                        if (mode_addr < cpu->mem_size) {
+                            cpu->mem[mode_addr] = modes[i].mode;
+                            cpu->screen_dirty = true;
+                        }
                     }
                     if (selected) ImGui::SetItemDefaultFocus();
                 }
@@ -339,15 +629,26 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
     if (ImGui::BeginPopupModal("Load ROM", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("File: %s", g_rom_path);
         ImGui::InputText("Load address", g_load_addr_buf, sizeof(g_load_addr_buf));
-        ImGui::TextDisabled("0x00000000 = BIOS/ROM, 0x00050000 = user program");
+        {
+            uint32_t user_ram = cpu->backend ? cpu->backend->user_ram_start : 0x00060000;
+            char hint[128];
+            snprintf(hint, sizeof(hint), "User programs load at 0x%08X+; BIOS is loaded automatically.", user_ram);
+            ImGui::TextDisabled("%s", hint);
+        }
         if (g_load_error[0] != '\0') {
             ImGui::TextColored(ImVec4(0.8f, 0.1f, 0.1f, 1.0f), "%s", g_load_error);
         }
         if (ImGui::Button("Load", ImVec2(120, 0))) {
             uint32_t addr = (uint32_t)strtoul(g_load_addr_buf, nullptr, 0);
-            if (cpu_load_file(cpu, g_rom_path, addr) == 0) {
-                emulator_reset_cpu(cpu);
-                cpu_set_reg(cpu, cpu->backend->pc_register, addr);
+            uint32_t user_ram = cpu->backend ? cpu->backend->user_ram_start : 0x00060000;
+            if (addr < user_ram) {
+                snprintf(g_load_error, sizeof(g_load_error),
+                         "Address below 0x%08X is reserved for system ROM/MMIO/VRAM window.", user_ram);
+            } else if (cpu_load_file(cpu, g_rom_path, addr) == 0) {
+                // Keep PC at the BIOS entry point; the BIOS will detect the
+                // program in RAM and jump to it.
+                cpu_set_reg(cpu, cpu->backend->pc_register, 0x00000000);
+                g_cpu_running = true;
                 if (g_window) {
                     char title[512];
                     snprintf(title, sizeof(title), "%s - %s @ 0x%08X",
@@ -355,8 +656,8 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                              g_rom_path, addr);
                     SDL_SetWindowTitle(g_window, title);
                 }
-                g_cpu_running = true;
                 ImGui::CloseCurrentPopup();
+                g_load_error[0] = '\0';
             } else {
                 snprintf(g_load_error, sizeof(g_load_error), "Failed to load file!");
             }
@@ -446,13 +747,27 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
         if (ImGui::BeginTabItem("MEMORY DUMP")) {
             static char mem_addr_buf[32] = "0x00000000";
             static uint32_t dump_addr = 0;
+            static uint32_t edit_addr = 0xFFFFFFFF;
+            static char edit_buf[4] = "";
+            static bool edit_activate = false;
+            const uint32_t page_size = 256;
 
-            ImGui::SetNextItemWidth(120.0f);
+            ImGui::SetNextItemWidth(90.0f);
             ImGui::InputText("Address", mem_addr_buf, sizeof(mem_addr_buf),
                              ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_CharsUppercase);
             ImGui::SameLine();
             if (ImGui::Button("Go")) {
                 dump_addr = (uint32_t)strtoul(mem_addr_buf, nullptr, 0);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("<")) {
+                dump_addr = (dump_addr >= page_size) ? (dump_addr - page_size) : 0;
+                snprintf(mem_addr_buf, sizeof(mem_addr_buf), "0x%08X", dump_addr);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(">")) {
+                dump_addr = (dump_addr + page_size < cpu->mem_size) ? (dump_addr + page_size) : dump_addr;
+                snprintf(mem_addr_buf, sizeof(mem_addr_buf), "0x%08X", dump_addr);
             }
             ImGui::SameLine();
             if (ImGui::Button("BIOS")) {
@@ -466,7 +781,7 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
             }
             ImGui::SameLine();
             if (ImGui::Button("USER RAM")) {
-                dump_addr = 0x00050000;
+                dump_addr = cpu->backend ? cpu->backend->user_ram_start : 0x00060000;
                 snprintf(mem_addr_buf, sizeof(mem_addr_buf), "0x%08X", dump_addr);
             }
             ImGui::Separator();
@@ -476,7 +791,7 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                 for (int i = 0; i < 16; i++) {
                     char col_name[4];
                     snprintf(col_name, sizeof(col_name), "%X", i);
-                    ImGui::TableSetupColumn(col_name, ImGuiTableColumnFlags_WidthFixed, 24.0f);
+                    ImGui::TableSetupColumn(col_name, ImGuiTableColumnFlags_WidthFixed, 28.0f);
                 }
                 ImGui::TableSetupColumn("ASCII", ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableHeadersRow();
@@ -495,7 +810,52 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                             b = cpu->mem[a];
                         }
                         ImGui::TableNextColumn();
-                        ImGui::Text("%02X", b);
+
+                        if (a < cpu->mem_size && edit_addr == a) {
+                            ImGui::SetNextItemWidth(-FLT_MIN);
+                            if (edit_activate) {
+                                ImGui::SetKeyboardFocusHere();
+                            }
+                            char edit_id[32];
+                            snprintf(edit_id, sizeof(edit_id), "##edit_%08X", a);
+                            bool entered = ImGui::InputText(edit_id, edit_buf, sizeof(edit_buf),
+                                                 ImGuiInputTextFlags_CharsHexadecimal |
+                                                 ImGuiInputTextFlags_CharsUppercase |
+                                                 ImGuiInputTextFlags_EnterReturnsTrue);
+                            bool cancelled = ImGui::IsKeyPressed(ImGuiKey_Escape);
+                            if (entered) {
+                                uint32_t val = (uint32_t)strtoul(edit_buf, nullptr, 16);
+                                cpu->mem[a] = (uint8_t)(val & 0xFF);
+                                edit_addr = 0xFFFFFFFF;
+                                edit_activate = false;
+                            } else if (cancelled) {
+                                edit_addr = 0xFFFFFFFF;
+                                edit_activate = false;
+                            } else if (ImGui::IsItemDeactivated()) {
+                                // Focus lost (clicked outside, Tab, etc.): save value.
+                                uint32_t val = (uint32_t)strtoul(edit_buf, nullptr, 16);
+                                cpu->mem[a] = (uint8_t)(val & 0xFF);
+                                edit_addr = 0xFFFFFFFF;
+                                edit_activate = false;
+                            } else if (ImGui::IsItemActive() || ImGui::IsItemFocused()) {
+                                // Input field is being interacted with; keep it open.
+                                edit_activate = false;
+                            } else if (!edit_activate) {
+                                // Input field failed to take focus; close editor to avoid getting stuck.
+                                edit_addr = 0xFFFFFFFF;
+                            }
+                        } else if (a < cpu->mem_size) {
+                            char cell_id[32];
+                            snprintf(cell_id, sizeof(cell_id), "%02X##cell_%08X", b, a);
+                            ImGui::Selectable(cell_id, false, ImGuiSelectableFlags_AllowDoubleClick);
+                            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+                                edit_addr = a;
+                                snprintf(edit_buf, sizeof(edit_buf), "%02X", b);
+                                edit_activate = true;
+                            }
+                        } else {
+                            ImGui::Text("--");
+                        }
                         ascii[col] = (b >= 32 && b < 127) ? (char)b : '.';
                     }
                     ascii[16] = '\0';

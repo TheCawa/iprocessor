@@ -102,6 +102,7 @@ typedef struct CpuBackend {
     uint16_t vbuffer_cols;
     uint16_t vbuffer_rows;
     uint32_t kbd_ascii_addr;                // 0 if keyboard MMIO is not supported
+    uint32_t user_ram_start;                // first address available to user programs
 } CpuBackend;
 
 // Common CPU container. Holds universal subsystems (memory, disk, keyboard,

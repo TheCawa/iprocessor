@@ -68,19 +68,18 @@ typedef struct {
     int       cols;
     int       rows;
     int       font_w;
-    int       font_h;     // logical font height on screen
-    int       font_src_h; // height in the source 8x8 font (1..8)
+    int       font_h;     // logical font height on screen (8 or 16)
 } VideoMode;
 
 static const VideoMode g_modes[] = {
-    { 0x00, MODE_TYPE_TEXT, 640, 200, 80, 25, 8, 8, 8 },
-    { 0x01, MODE_TYPE_GFX,  320, 200,  0,  0, 0, 0, 0 },
-    { 0x10, MODE_TYPE_TEXT, 320, 240, 40, 30, 8, 8, 8 },
-    { 0x11, MODE_TYPE_TEXT, 640, 480, 80, 60, 8, 8, 8 },
-    { 0x12, MODE_TYPE_TEXT, 640, 480, 80, 30, 8, 16, 8 }, // 8x16 by stretching
-    { 0x20, MODE_TYPE_GFX,  320, 240,  0,  0, 0, 0, 0 },
-    { 0x21, MODE_TYPE_GFX,  640, 480,  0,  0, 0, 0, 0 },
-    { 0x22, MODE_TYPE_GFX,  800, 600,  0,  0, 0, 0, 0 },
+    { 0x00, MODE_TYPE_TEXT, 640, 200, 80, 25, 8,  8 },
+    { 0x01, MODE_TYPE_GFX,  320, 200,  0,  0, 0,  0 },
+    { 0x10, MODE_TYPE_TEXT, 320, 240, 40, 30, 8,  8 },
+    { 0x11, MODE_TYPE_TEXT, 640, 480, 80, 60, 8,  8 },
+    { 0x12, MODE_TYPE_TEXT, 640, 480, 80, 30, 8, 16 }, // native 8x16 font
+    { 0x20, MODE_TYPE_GFX,  320, 240,  0,  0, 0,  0 },
+    { 0x21, MODE_TYPE_GFX,  640, 480,  0,  0, 0,  0 },
+    { 0x22, MODE_TYPE_GFX,  800, 600,  0,  0, 0,  0 },
 };
 #define MODE_COUNT (sizeof(g_modes) / sizeof(g_modes[0]))
 
@@ -91,6 +90,9 @@ static uint8_t  default_prev_gfx[MAX_GFX_WIDTH * MAX_GFX_HEIGHT];
 static int default_initialized = 0;
 static const VideoMode* default_current_mode = NULL;
 static int default_force_redraw = 1;
+
+// Native 8x16 font generated from the 8x8 font by doubling each scanline.
+static uint8_t default_font8x16[256][16];
 
 static const VideoMode* default_find_mode(uint8_t id) {
     for (int i = 0; i < (int)MODE_COUNT; i++) {
@@ -132,6 +134,17 @@ static int default_init(SDL_Renderer* renderer) {
     default_renderer = renderer;
     default_current_mode = NULL;
     default_force_redraw = 1;
+
+    // Build the 8x16 font from the embedded 8x8 font by duplicating rows.
+    for (int ch = 0; ch < 256; ch++) {
+        uint64_t glyph = font8x8[ch];
+        for (int y = 0; y < 8; y++) {
+            uint8_t row = (uint8_t)((glyph >> (y * 8)) & 0xFF);
+            default_font8x16[ch][y * 2 + 0] = row;
+            default_font8x16[ch][y * 2 + 1] = row;
+        }
+    }
+
     default_initialized = 1;
     return 0;
 }
@@ -201,24 +214,31 @@ static void default_update_text(Cpu* cpu, const VideoMode* mode) {
             uint32_t fg = default_get_color(attr, 1);
             uint32_t bg = default_get_color(attr, 0);
 
-            uint64_t glyph = font8x8[ch];
-
             int px0 = col * mode->font_w;
             int py0 = row * mode->font_h;
 
-            for (int bit_y = 0; bit_y < mode->font_src_h; bit_y++) {
-                uint8_t row_bits = (uint8_t)((glyph >> (bit_y * 8)) & 0xFF);
-                int py = py0 + bit_y * (mode->font_h / mode->font_src_h);
-                for (int bit_x = 0; bit_x < mode->font_w; bit_x++) {
-                    int px = px0 + bit_x;
-                    int active = (row_bits >> (7 - bit_x)) & 1;
-                    uint32_t color = active ? fg : bg;
-                    // For stretched modes duplicate the row.
-                    int y_rep = (mode->font_h / mode->font_src_h);
-                    for (int r = 0; r < y_rep; r++) {
-                        int py_draw = py + r;
-                        if (py_draw < mode->height && px < mode->width) {
-                            pixels[py_draw * stride + px] = color;
+            if (mode->font_h == 16) {
+                for (int bit_y = 0; bit_y < 16; bit_y++) {
+                    uint8_t row_bits = default_font8x16[ch][bit_y];
+                    int py = py0 + bit_y;
+                    for (int bit_x = 0; bit_x < mode->font_w; bit_x++) {
+                        int px = px0 + bit_x;
+                        int active = (row_bits >> (7 - bit_x)) & 1;
+                        if (py < mode->height && px < mode->width) {
+                            pixels[py * stride + px] = active ? fg : bg;
+                        }
+                    }
+                }
+            } else {
+                uint64_t glyph = font8x8[ch];
+                for (int bit_y = 0; bit_y < 8; bit_y++) {
+                    uint8_t row_bits = (uint8_t)((glyph >> (bit_y * 8)) & 0xFF);
+                    int py = py0 + bit_y;
+                    for (int bit_x = 0; bit_x < mode->font_w; bit_x++) {
+                        int px = px0 + bit_x;
+                        int active = (row_bits >> (7 - bit_x)) & 1;
+                        if (py < mode->height && px < mode->width) {
+                            pixels[py * stride + px] = active ? fg : bg;
                         }
                     }
                 }
@@ -291,7 +311,7 @@ static int default_get_display_height(void) {
 
 const VideoCard g_videocard_default = {
     .name        = "default",
-    .description = "text (80x25,40x30,80x60,80x30) + graphics (320x200,320x240,640x480,800x600)",
+    .description = "text (80x25,40x30,80x60,80x30-8x16) + graphics (320x200,320x240,640x480,800x600)",
     .init        = default_init,
     .shutdown    = default_shutdown,
     .reset       = default_reset,

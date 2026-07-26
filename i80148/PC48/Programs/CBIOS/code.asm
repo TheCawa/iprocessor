@@ -136,7 +136,7 @@ slot_next:
     XOR X5, X5
     XOR X6, X6
     XOR X7, X7
-    LDI.DW IX, 0x00050000
+    LDI.DW IX, 0x00060000
     XOR A0, A0
     LDI.DW EX2, 0x00000000
     LDI.DW EX3, 0x00000001
@@ -155,7 +155,7 @@ cbios_delay:
     JMP.GR cbios_delay
 
     STR.B R0, [0x00020019]
-    JMA 0x00050000
+    JMA 0x00060000
 
 disk_read_error:
     LDI.B XL1, 0x0A

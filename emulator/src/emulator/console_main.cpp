@@ -19,19 +19,56 @@
 
 #include <iostream>
 #include <vector>
+#include <string>
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <windows.h>
 #include <SDL.h>
 #include "backends.h"
 #include "pit.h"
 
+static std::string get_exe_dir() {
+    char buf[MAX_PATH];
+    DWORD len = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) return "";
+    for (int i = (int)len - 1; i >= 0; i--) {
+        if (buf[i] == '\\' || buf[i] == '/') {
+            buf[i] = '\0';
+            break;
+        }
+    }
+    return std::string(buf);
+}
+
+static std::string resolve_bios_path(const char* user_path) {
+    if (user_path) {
+        FILE* f = fopen(user_path, "rb");
+        if (f) { fclose(f); return user_path; }
+        return user_path;
+    }
+    std::string exe_dir = get_exe_dir();
+    const char* candidates[] = {
+        "CBIOS.bin",
+        "CBIOS/CBIOS.bin",
+        "../i80148/PC48/Programs/CBIOS/CBIOS.bin",
+        "../../i80148/PC48/Programs/CBIOS/CBIOS.bin"
+    };
+    for (const char* cand : candidates) {
+        std::string path = exe_dir.empty() ? cand : (exe_dir + "/" + cand);
+        FILE* f = fopen(path.c_str(), "rb");
+        if (f) { fclose(f); return path; }
+    }
+    return "";
+}
+
 static void print_usage(const char* prog) {
-    std::cerr << "Usage: " << prog << " [--cpu <name>] <file> [load_addr] [disk_image]\n";
+    std::cerr << "Usage: " << prog << " [--cpu <name>] [--bios <path>] <file> [load_addr] [disk_image]\n";
     std::cerr << "\nExamples:\n";
-    std::cerr << "  " << prog << " --cpu i80148 program.bin 0x00050000 disk.bin\n";
+    std::cerr << "  " << prog << " --cpu i80148 program.bin 0x00060000 disk.bin\n";
     std::cerr << "  " << prog << " --cpu i8046  program.bin 0x0000\n";
+    std::cerr << "  " << prog << " --bios ../i80148/PC48/Programs/CBIOS/CBIOS.bin program.bin\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -43,9 +80,10 @@ int main(int argc, char* argv[]) {
 
     const char* cpu_name = "i80148"; // default
     const char* filename = nullptr;
-    uint32_t load_addr = 0x00000000;
+    uint32_t load_addr = 0;
     bool load_addr_set = false;
     const char* disk_image = nullptr;
+    const char* bios_path = nullptr;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--cpu") == 0) {
@@ -54,6 +92,13 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cerr << "[ERROR] --cpu requires a CPU name\n";
                 cpu_backend_print_list();
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--bios") == 0) {
+            if (i + 1 < argc) {
+                bios_path = argv[++i];
+            } else {
+                std::cerr << "[ERROR] --bios requires a path\n";
                 return 1;
             }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -77,12 +122,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!filename) {
-        print_usage(argv[0]);
-        cpu_backend_print_list();
-        return 1;
-    }
-
     size_t ram_size = backend->mem_size_default;
     std::vector<uint8_t> memory(ram_size, 0);
     Cpu cpu;
@@ -94,11 +133,42 @@ int main(int argc, char* argv[]) {
         cpu.disk_drives[0].image_path[sizeof(cpu.disk_drives[0].image_path) - 1] = '\0';
     }
 
-    if (cpu_load_file(&cpu, filename, load_addr) != 0) {
-        std::cerr << "[ERROR] Failed to load binary file!\n";
-        return 1;
+    // Always load the ROM BIOS at address 0.
+    std::string resolved_bios = resolve_bios_path(bios_path);
+    if (!resolved_bios.empty()) {
+        if (cpu_load_file(&cpu, resolved_bios.c_str(), 0x00000000) != 0) {
+            std::cerr << "[WARN] Failed to load BIOS from " << resolved_bios << "\n";
+        }
+    } else {
+        std::cerr << "[WARN] No default BIOS found. Use --bios <path> to specify one.\n";
     }
-    cpu_set_reg(&cpu, backend->pc_register, load_addr);
+
+    if (filename) {
+        if (load_addr_set && load_addr == 0x00000000) {
+            // Explicit BIOS/ROM image overrides the default BIOS.
+            if (cpu_load_file(&cpu, filename, 0x00000000) != 0) {
+                std::cerr << "[ERROR] Failed to load ROM/BIOS file!\n";
+                return 1;
+            }
+        } else {
+            uint32_t user_ram = backend->user_ram_start;
+            if (!load_addr_set) {
+                load_addr = user_ram;
+            }
+            if (load_addr < user_ram) {
+                std::cerr << "[ERROR] User programs cannot be loaded below 0x" << std::hex << user_ram
+                          << std::dec << " (reserved for system ROM/MMIO/VRAM window).\n";
+                return 1;
+            }
+            if (cpu_load_file(&cpu, filename, load_addr) != 0) {
+                std::cerr << "[ERROR] Failed to load binary file!\n";
+                return 1;
+            }
+        }
+    }
+
+    // Start execution at the BIOS/ROM entry point (0x00000000).
+    cpu_set_reg(&cpu, backend->pc_register, 0x00000000);
 
     std::cout << "=== " << backend->description << " Console Emulator Started ===\n";
 

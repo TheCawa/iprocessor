@@ -108,7 +108,11 @@ typedef CpuMode_i80148 CpuMode;
 #define VC_MODE_ADDR_I80148     0x0002001A  // default video card mode select
 #define KBD_ASCII_ADDR_I80148   0x0002000B
 #define MEM_SIZE_ADDR_I80148    0x0002000C
-#define VBUFFER_BASE_I80148     0x00100000
+#define VRAM_BANK_REG_I80148    0x00020007  // video memory bank selector
+#define VBUFFER_BASE_I80148     0x00100000  // physical VRAM base
+#define VRAM_WINDOW_BASE        0x00050000  // MMIO window into VRAM
+#define VRAM_WINDOW_SIZE        0x00010000  // 64 KB window
+#define USER_RAM_START_I80148   0x00060000  // start of user-accessible RAM
 #define TERM_COLS_I80148        80
 #define TERM_ROWS_I80148        25
 
@@ -119,6 +123,13 @@ typedef struct {
 
 // Backend instance exported from cpu_i80148.c
 extern const CpuBackend g_cpu_backend_i80148;
+
+// ImGui register panel renderer.
+#ifdef __cplusplus
+extern "C" void i80148_render_state(Cpu* cpu);
+#else
+void i80148_render_state(Cpu* cpu);
+#endif
 
 #ifdef __cplusplus
 }

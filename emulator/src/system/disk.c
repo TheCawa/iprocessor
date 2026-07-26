@@ -139,7 +139,7 @@ static bool disk_drive_ensure_hex_image(DiskDrive* drive) {
     return true;
 }
 
-static void disk_drive_free_image(DiskDrive* drive) {
+void disk_drive_free_image(DiskDrive* drive) {
     if (drive->image_data) {
         free(drive->image_data);
         drive->image_data = NULL;

@@ -1,4 +1,4 @@
-.org 0x00050000
+.org 0x00060000
 
 start:
     ; Set PIT channel 0 divisor to 1000 ms (1 second)

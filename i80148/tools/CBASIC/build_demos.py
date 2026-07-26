@@ -28,8 +28,9 @@ from cbasic_semantic import SemanticAnalyzer
 from cbasic_codegen import CodeGenerator
 
 DEMO_DIR = os.path.join(os.path.dirname(__file__), "demos")
-EMU_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "src", "dist", "console_emu.exe")
-LOAD_ADDR = "0x00050000"
+EMU_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "..", "emulator", "dist", "console_emu.exe")
+LOAD_ADDR = "0x00060000"
+BIOS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "PC48", "Programs", "CBIOS", "CBIOS.bin"))
 
 parser = CBASICParser()
 
@@ -80,7 +81,7 @@ for bas_path in sorted(glob.glob(os.path.join(DEMO_DIR, "*.bas"))):
         continue  # Interactive; skip auto-run
 
     result = subprocess.run(
-        [EMU_PATH, bin_path, LOAD_ADDR],
+        [EMU_PATH, "--bios", BIOS_PATH, bin_path, LOAD_ADDR],
         capture_output=True, text=True, input="\n",
         cwd=os.path.dirname(__file__)
     )

@@ -621,4 +621,5 @@ const CpuBackend g_cpu_backend_i8046 = {
     .vbuffer_cols       = VBUFFER_COLS_I8046,
     .vbuffer_rows       = VBUFFER_ROWS_I8046,
     .kbd_ascii_addr     = 0,
+    .user_ram_start     = 0x00020000,
 };

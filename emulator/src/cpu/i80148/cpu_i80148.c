@@ -117,8 +117,23 @@ uint64_t cpu_get_reg_i80148(Cpu* cpu, uint8_t idx) {
     return state(cpu)->regs[idx] & MODE_MASKS[mode];
 }
 
+// Translate a VRAM window address (0x00050000..0x0005FFFF) into the physical
+// VRAM address selected by the bank register at 0x00020007.
+static inline uint32_t vram_window_translate(Cpu* cpu, uint32_t addr) {
+    uint32_t bank = 0;
+    if (VRAM_BANK_REG_I80148 < cpu->mem_size) {
+        bank = cpu->mem[VRAM_BANK_REG_I80148];
+    }
+    return VBUFFER_BASE_I80148 + ((uint32_t)bank * VRAM_WINDOW_SIZE) + (addr - VRAM_WINDOW_BASE);
+}
+
 // Big-endian memory access
 uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
+    // VRAM window read (0x00050000..0x0005FFFF).
+    if (addr >= VRAM_WINDOW_BASE && addr < VRAM_WINDOW_BASE + VRAM_WINDOW_SIZE) {
+        addr = vram_window_translate(cpu, addr);
+    }
+
     if (mode == MODE_DWORD && addr == 0x0002000C) {
         return (uint32_t)cpu->mem_size;
     }
@@ -193,6 +208,11 @@ static void cpu_trigger_int(Cpu* cpu, uint8_t vector) {
 }
 
 void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
+    // VRAM window write (0x00050000..0x0005FFFF).
+    if (addr >= VRAM_WINDOW_BASE && addr < VRAM_WINDOW_BASE + VRAM_WINDOW_SIZE) {
+        addr = vram_window_translate(cpu, addr);
+    }
+
     // MMIO intercepts (ignore access size, like real hardware does)
     if (addr == TERM_OUT_ADDR_I80148) {
         term_putchar(cpu, (char)(val & 0xFF));
@@ -959,7 +979,7 @@ const CpuBackend g_cpu_backend_i80148 = {
     .feed_key           = NULL,  // handled by common cpu_feed_key
     .register_count     = REG_COUNT_I80148,
     .register_names     = g_i80148_register_names,
-    .render_state       = NULL,
+    .render_state       = i80148_render_state,
     .render_memory_buttons = NULL,
     .pc_register        = REG_IC,
     .fl_register        = REG_FL,
@@ -969,4 +989,5 @@ const CpuBackend g_cpu_backend_i80148 = {
     .vbuffer_cols       = TERM_COLS_I80148,
     .vbuffer_rows       = TERM_ROWS_I80148,
     .kbd_ascii_addr     = KBD_ASCII_ADDR_I80148,
+    .user_ram_start     = USER_RAM_START_I80148,
 };

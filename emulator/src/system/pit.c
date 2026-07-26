@@ -160,3 +160,21 @@ void pit_reset_pending(Cpu* cpu) {
     if (!pit) return;
     pit->ch[0].irq_pending = false;
 }
+
+size_t pit_state_size(void) {
+    return sizeof(PitState);
+}
+
+void pit_save_state(Cpu* cpu, void* out_buf) {
+    PitState* pit = pit_state(cpu);
+    if (pit && out_buf) {
+        memcpy(out_buf, pit, sizeof(PitState));
+    }
+}
+
+void pit_load_state(Cpu* cpu, const void* in_buf) {
+    PitState* pit = pit_state(cpu);
+    if (pit && in_buf) {
+        memcpy(pit, in_buf, sizeof(PitState));
+    }
+}

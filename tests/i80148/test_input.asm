@@ -1,9 +1,9 @@
 ; Test program for keyboard IRQ, mouse IRQ and mouse MMIO.
-; Load address: 0x00050000 (BIOS/CBIOS can load it from disk).
+; Load address: 0x00060000 (BIOS/CBIOS can load it from disk).
 ; In the GUI, click on the emulated screen to capture mouse/keyboard,
 ; then type or move the mouse.
 
-.org 0x00050000
+.org 0x00060000
 .text
 
     CLI
