@@ -33,10 +33,17 @@
 #include <windows.h>
 #include <commdlg.h>
 
-// Display scale: the native texture is 640x200, but we scale it to 640x400
-// for a more typical retro-PC look.
-#define DISPLAY_W 640
-#define DISPLAY_H 400
+// Display configuration: logical size of the screen panel in pixels.
+// The physical video-card texture size is controlled by VC_MODE (0x2001A),
+// while these values control the host window / panel size and zoom.
+static int g_display_width = 640;
+static int g_display_height = 400;
+
+// CPU frequency indicator state.
+static int g_steps_this_frame = 0;
+static int g_steps_last_second = 0;
+static int g_steps_accumulator = 0;
+static Uint32 g_steps_last_time = 0;
 
 static SDL_Window* g_window = nullptr;
 static SDL_Renderer* g_renderer = nullptr;
@@ -159,6 +166,17 @@ void emulator_set_fixed_steps(int steps) { g_cpu_fixed_steps = steps > 0 ? steps
 int  emulator_get_fixed_steps(void) { return g_cpu_fixed_steps; }
 void emulator_set_max_steps(int steps) { g_cpu_max_steps = steps > 0 ? steps : 1; }
 int  emulator_get_max_steps(void) { return g_cpu_max_steps; }
+
+void emulator_report_steps(int steps) {
+    g_steps_this_frame = steps;
+    g_steps_accumulator += steps;
+    Uint32 now = SDL_GetTicks();
+    if (now - g_steps_last_time >= 1000) {
+        g_steps_last_second = g_steps_accumulator;
+        g_steps_accumulator = 0;
+        g_steps_last_time = now;
+    }
+}
 
 bool emulator_init(SDL_Window** out_window, SDL_Renderer** out_renderer, const VideoCard* vc) {
     if (!vc) vc = videocard_get_default();
@@ -433,8 +451,8 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
     }
 
     SDL_Texture* screen_tex = g_vc ? g_vc->get_texture() : nullptr;
-    int display_w = (int)(DISPLAY_W * g_display_scale);
-    int display_h = (int)(DISPLAY_H * g_display_scale);
+    int display_w = (int)(g_display_width * g_display_scale);
+    int display_h = (int)(g_display_height * g_display_scale);
 
     ImGui_ImplSDLRenderer2_NewFrame();
     ImGui_ImplSDL2_NewFrame();
@@ -563,34 +581,44 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
 
             ImGui::Separator();
 
-            // Video mode selector for cards that expose the default mode register.
-            struct { const char* name; uint8_t mode; } modes[] = {
-                { "80x25 text",       0x00 },
-                { "40x30 text",       0x10 },
-                { "80x60 text",       0x11 },
-                { "80x30 text (8x16)",0x12 },
-                { "320x200 graphics", 0x01 },
-                { "320x240 graphics", 0x20 },
-                { "640x480 graphics", 0x21 },
-                { "800x600 graphics", 0x22 },
+            // Display settings: host window size and color depth.
+            // VC_MODE (0x2001A) remains under program control.
+            struct { const char* name; int w; int h; } resolutions[] = {
+                { "640x400",  640,  400 },
+                { "800x600",  800,  600 },
+                { "1024x768", 1024, 768 },
+                { "1280x720", 1280, 720 },
             };
-            const uint32_t mode_addr = 0x0002001A;
-            uint8_t current_mode = (mode_addr < cpu->mem_size) ? cpu->mem[mode_addr] : 0x00;
-            const char* current_name = modes[0].name;
-            for (int i = 0; i < (int)(sizeof(modes)/sizeof(modes[0])); i++) {
-                if (modes[i].mode == current_mode) {
-                    current_name = modes[i].name;
+            const char* current_res_name = resolutions[0].name;
+            for (int i = 0; i < (int)(sizeof(resolutions)/sizeof(resolutions[0])); i++) {
+                if (resolutions[i].w == g_display_width && resolutions[i].h == g_display_height) {
+                    current_res_name = resolutions[i].name;
                     break;
                 }
             }
-            if (ImGui::BeginCombo("Screen mode", current_name)) {
-                for (int i = 0; i < (int)(sizeof(modes)/sizeof(modes[0])); i++) {
-                    bool selected = (modes[i].mode == current_mode);
-                    if (ImGui::Selectable(modes[i].name, selected)) {
-                        if (mode_addr < cpu->mem_size) {
-                            cpu->mem[mode_addr] = modes[i].mode;
-                            cpu->screen_dirty = true;
+            if (ImGui::BeginCombo("Display resolution", current_res_name)) {
+                for (int i = 0; i < (int)(sizeof(resolutions)/sizeof(resolutions[0])); i++) {
+                    bool selected = (resolutions[i].w == g_display_width && resolutions[i].h == g_display_height);
+                    if (ImGui::Selectable(resolutions[i].name, selected)) {
+                        g_display_width = resolutions[i].w;
+                        g_display_height = resolutions[i].h;
+                        if (g_window) {
+                            SDL_SetWindowSize(g_window, g_display_width + 400, g_display_height + 80);
                         }
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            const char* depth_names[] = { "16 colors", "256 colors (VGA)" };
+            static int g_color_depth = 8; // 4 = 16 colors, 8 = 256 colors
+            int depth_idx = (g_color_depth == 8) ? 1 : 0;
+            if (ImGui::BeginCombo("Color depth", depth_names[depth_idx])) {
+                for (int i = 0; i < 2; i++) {
+                    bool selected = (i == depth_idx);
+                    if (ImGui::Selectable(depth_names[i], selected)) {
+                        g_color_depth = (i == 1) ? 8 : 4;
                     }
                     if (selected) ImGui::SetItemDefaultFocus();
                 }
@@ -890,6 +918,11 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
         ImGui::EndTabBar();
     }
 
+    ImGui::Separator();
+    ImGui::Text("CPU clock:");
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.0f, 0.7f, 0.0f, 1.0f), "%d steps/s", g_steps_last_second);
+
     ImGui::EndChild();
     ImGui::End();
 
@@ -951,8 +984,9 @@ bool emulator_handle_events(Cpu* cpu) {
             continue;
         }
 
-        // Normal (non-captured) mode: events go to ImGui and keyboard is fed
-        // to the emulated machine for typing convenience.
+        // Normal (non-captured) mode: events go to ImGui and keyboard/mouse
+        // are also fed to the emulated machine so test programs work without
+        // explicit capture.
         ImGui_ImplSDL2_ProcessEvent(&e);
 
         if (e.type == SDL_QUIT) return false;
@@ -968,12 +1002,22 @@ bool emulator_handle_events(Cpu* cpu) {
             switch (e.key.keysym.sym) {
                 case SDLK_RETURN: c = '\r'; break;
                 case SDLK_BACKSPACE: c = '\b'; break;
+                case SDLK_TAB: c = '\t'; break;
                 case SDLK_ESCAPE: c = 0x1B; break;
                 default: break;
             }
             if (c) {
                 input_feed_key(cpu, c);
             }
+        }
+
+        if (e.type == SDL_MOUSEMOTION) {
+            input_mouse_move(cpu, e.motion.xrel, e.motion.yrel);
+        }
+
+        if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
+            bool pressed = (e.type == SDL_MOUSEBUTTONDOWN);
+            input_mouse_button(cpu, e.button.button, pressed);
         }
     }
     return true;

@@ -234,8 +234,12 @@ int main(int argc, char* argv[]) {
                     if (mode == CPU_SPEED_FIXED && steps >= fixed_steps) break;
                     if (mode == CPU_SPEED_ADAPTIVE && (int)(SDL_GetTicks() - frame_start) >= budget_ms) break;
                 }
+                emulator_report_steps(steps);
             } else if (emulator_consume_step()) {
                 cpu_step(&cpu);
+                emulator_report_steps(1);
+            } else {
+                emulator_report_steps(0);
             }
         }
 

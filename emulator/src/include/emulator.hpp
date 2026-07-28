@@ -41,5 +41,8 @@ int  emulator_get_fixed_steps(void);
 void emulator_set_max_steps(int steps);
 int  emulator_get_max_steps(void);
 
+// Report the number of CPU steps executed this frame for the frequency indicator.
+void emulator_report_steps(int steps);
+
 // Properly destroy all contexts
 void emulator_shutdown();

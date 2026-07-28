@@ -24,6 +24,10 @@
 #include <ctype.h>
 
 #ifdef _WIN32
+#include <conio.h>
+#endif
+
+#ifdef _WIN32
 #ifndef strcasecmp
 static int strcasecmp_win(const char* a, const char* b) {
     while (*a && *b) {
@@ -400,17 +404,35 @@ uint32_t disk_read_dword(Cpu* cpu, uint32_t addr) {
 }
 
 uint8_t kbd_read_ascii(Cpu* cpu) {
-    if (cpu->kbd_buffer_pos >= cpu->kbd_buffer_len) {
-        if (cpu->gui_mode) {
-            return 0;
-        }
-        if (!fgets(cpu->kbd_buffer, sizeof(cpu->kbd_buffer), stdin)) {
-            return 0;
-        }
-        cpu->kbd_buffer_len = (int)strlen(cpu->kbd_buffer);
-        cpu->kbd_buffer_pos = 0;
+    if (cpu->kbd_buffer_pos < cpu->kbd_buffer_len) {
+        uint8_t c = (uint8_t)cpu->kbd_buffer[cpu->kbd_buffer_pos++];
+        if (c == '\n') c = '\r';
+        return c;
     }
-    uint8_t c = (uint8_t)cpu->kbd_buffer[cpu->kbd_buffer_pos++];
-    if (c == '\n') c = '\r';
-    return c;
+
+    if (cpu->gui_mode) {
+        return 0;
+    }
+
+#ifdef _WIN32
+    if (_kbhit()) {
+        int c = _getch();
+        if (c == 0 || c == 0xE0) {
+            // Extended key (arrows, function keys): consume second code.
+            if (_kbhit()) _getch();
+            return 0;
+        }
+        if (c == '\r') c = '\n';
+        return (uint8_t)c;
+    }
+    return 0;
+#else
+    // Fallback: line-buffered stdin for non-Windows builds.
+    if (!fgets(cpu->kbd_buffer, sizeof(cpu->kbd_buffer), stdin)) {
+        return 0;
+    }
+    cpu->kbd_buffer_len = (int)strlen(cpu->kbd_buffer);
+    cpu->kbd_buffer_pos = 0;
+    return kbd_read_ascii(cpu);
+#endif
 }

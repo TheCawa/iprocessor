@@ -28,7 +28,7 @@
 //   0x11 - 80x60, 8x8 font  (640x480)
 //   0x12 - 80x30, 8x8 font stretched to 8x16 (640x480)
 //
-// Graphics modes (256-color grayscale ramp):
+// Graphics modes (256-color VGA palette):
 //   0x01 - 320x200 legacy
 //   0x20 - 320x240
 //   0x21 - 640x480
@@ -53,6 +53,28 @@ static const uint32_t default_palette[16] = {
     0xFF555555, 0xFF5555FF, 0xFF55FF55, 0xFF55FFFF,
     0xFFFF5555, 0xFFFF55FF, 0xFFFFFF55, 0xFFFFFFFF
 };
+
+// Standard VGA 256-color palette (6x6x6 color cube + 40 grayscale entries).
+static uint32_t vga_palette[256];
+
+static void default_build_vga_palette(void) {
+    int idx = 0;
+    for (int r = 0; r < 6; r++) {
+        for (int g = 0; g < 6; g++) {
+            for (int b = 0; b < 6; b++) {
+                uint8_t rv = (uint8_t)(r * 51);
+                uint8_t gv = (uint8_t)(g * 51);
+                uint8_t bv = (uint8_t)(b * 51);
+                vga_palette[idx++] = 0xFF000000 | ((uint32_t)rv << 16) | ((uint32_t)gv << 8) | bv;
+            }
+        }
+    }
+    // Remaining 40 entries: grayscale ramp.
+    for (int i = 0; i < 40; i++) {
+        uint8_t v = (uint8_t)(i * 255 / 39);
+        vga_palette[idx++] = 0xFF000000 | ((uint32_t)v << 16) | ((uint32_t)v << 8) | v;
+    }
+}
 
 typedef enum {
     MODE_TYPE_TEXT,
@@ -145,6 +167,7 @@ static int default_init(SDL_Renderer* renderer) {
         }
     }
 
+    default_build_vga_palette();
     default_initialized = 1;
     return 0;
 }
@@ -267,9 +290,8 @@ static void default_update_gfx(Cpu* cpu, const VideoMode* mode) {
             if (!dirty && !default_force_redraw && default_prev_gfx[idx] == pix) continue;
             default_prev_gfx[idx] = pix;
 
-            // Mode 13h style: 256-color palette (grayscale ramp for now).
-            uint32_t color = 0xFF000000 | (pix << 16) | (pix << 8) | pix;
-            pixels[y * stride + x] = color;
+            // Mode 13h style: standard VGA 256-color palette.
+            pixels[y * stride + x] = vga_palette[pix];
         }
     }
 

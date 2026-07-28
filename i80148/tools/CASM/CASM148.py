@@ -20,6 +20,7 @@
 
 import sys
 import re
+import ast
 
 REGISTERS = {
     'R0': 0x00,
@@ -180,11 +181,46 @@ class Assembler:
         if s.startswith('0b') or s.startswith('0B'): return int(s, 2)
         return int(s)
 
+    def _eval_expr(self, s):
+        # Safe evaluator for simple arithmetic expressions like (24*80+79)*2.
+        node = ast.parse(s, mode='eval')
+        def _eval(n):
+            if isinstance(n, ast.Expression): return _eval(n.body)
+            if isinstance(n, ast.BinOp):
+                left = _eval(n.left)
+                right = _eval(n.right)
+                if isinstance(n.op, ast.Add): return left + right
+                if isinstance(n.op, ast.Sub): return left - right
+                if isinstance(n.op, ast.Mult): return left * right
+                if isinstance(n.op, ast.Div): return left // right
+                if isinstance(n.op, ast.Mod): return left % right
+                raise ValueError('unsupported operator')
+            if isinstance(n, ast.UnaryOp):
+                if isinstance(n.op, ast.USub): return -_eval(n.operand)
+                if isinstance(n.op, ast.UAdd): return _eval(n.operand)
+                raise ValueError('unsupported unary operator')
+            if isinstance(n, ast.Num): return n.n
+            if isinstance(n, ast.Constant) and isinstance(n.value, int): return n.value
+            raise ValueError('unsupported node')
+        return _eval(node)
+
     def parse_operand(self, s):
         s = s.strip().rstrip(',')
         if not s: return 0
         if s.upper() in self.labels: return self.labels[s.upper()]
         if s.upper() in REGISTERS: return REGISTERS[s.upper()]
+        # Character literal: 'A' or '\n'
+        if s.startswith("'") and s.endswith("'") and len(s) >= 3:
+            ch = s[1:-1]
+            if ch == '\\n': return 0x0A
+            if ch == '\\r': return 0x0D
+            if ch == '\\t': return 0x09
+            if ch == '\\b': return 0x08
+            if ch == '\\0': return 0x00
+            if len(ch) == 1: return ord(ch)
+        # Simple arithmetic expression
+        try: return self._eval_expr(s)
+        except: pass
         try: return self.parse_number(s)
         except: return 0
 

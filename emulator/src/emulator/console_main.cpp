@@ -18,6 +18,7 @@
 // ------------------------------------------------------------------------------
 
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -69,6 +70,21 @@ static void print_usage(const char* prog) {
     std::cerr << "  " << prog << " --cpu i80148 program.bin 0x00060000 disk.bin\n";
     std::cerr << "  " << prog << " --cpu i8046  program.bin 0x0000\n";
     std::cerr << "  " << prog << " --bios ../i80148/PC48/Programs/CBIOS/CBIOS.bin program.bin\n";
+}
+
+static void print_registers(const CpuBackend* backend, Cpu* cpu) {
+    if (!backend || !backend->register_names || backend->register_count <= 0) return;
+    std::cout << "\n=== Registers ===\n";
+    int cols = (backend->register_count <= 16) ? 2 : 3;
+    for (int i = 0; i < backend->register_count; i++) {
+        const char* name = backend->register_names[i] ? backend->register_names[i] : "?";
+        std::cout << std::left << std::setw(6) << name << std::setfill(' ') << "= 0x"
+                  << std::right << std::hex << std::setfill('0') << std::setw(8)
+                  << (uint32_t)cpu_get_reg(cpu, (uint8_t)i) << std::dec << std::setfill(' ');
+        if ((i + 1) % cols == 0) std::cout << "\n";
+        else std::cout << "  ";
+    }
+    if (backend->register_count % cols != 0) std::cout << "\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -210,6 +226,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "\n=== Step limit reached (" << steps << " steps) ===\n";
     }
+    print_registers(backend, &cpu);
 
     return 0;
 }

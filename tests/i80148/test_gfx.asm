@@ -15,9 +15,9 @@ line_loop:
     LSL A2, 6            ; A2 = y * 64
     COPY A3, A1
     LSL A3, 8            ; A3 = y * 256
-    ADD.DW A2, A3           ; A2 = y * 320
-    ADD.DW A2, A0           ; A2 = base + y*320
-    ADD.DW A2, A1           ; + y
+    ADD A2, A3           ; A2 = y * 320
+    ADD A2, A0           ; A2 = base + y*320
+    ADD A2, A1           ; + y
 
     LDI.B XL1, 0xFF
     STR.B XL1, [A2]
