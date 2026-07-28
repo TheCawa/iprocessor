@@ -23,75 +23,82 @@ Memory regions:
 	BANK FF00h-FFFFh - XPB Banks
 	
 I/O registers map:
-	#INDX - #ADDR     - #AC - #NAME		  
-	0000h - 00020000h - R   - SYS_STATUS
-	0001h - 00020001h - R/W - SYS_CTRL
-	0002h - 00020002h - ??? - IRQ_PEND
-	0003h - 00020003h - ??? - IRQ_MASK
-	0004h - 00020004h - R   - TIMER_LOW
-	0005h - 00020005h - R 	- TIMER_HIGH
-	0006h - 00020006h - R   - UPTIME
-	0007h - 00020007h - R/W - BANK
+	#INDX - #ADDR     - #AC - #NAME		  - #Notes
+	0000h - 00020000h - R   - SYS_STATUS    - formal, reads as RAM
+	0001h - 00020001h - R/W - SYS_CTRL      - formal, writes to RAM
+	0002h - 00020002h - ??? - IRQ_PEND      - formal
+	0003h - 00020003h - ??? - IRQ_MASK      - formal
+	0004h - 00020004h - R   - TIMER_LOW     - formal
+	0005h - 00020005h - R 	- TIMER_HIGH    - formal
+	0006h - 00020006h - R   - UPTIME        - formal
+	0007h - 00020007h - R/W - BANK          - VRAM bank selector
 	
-	0008h - 00020008h - R/W - KBD_CTRL
-	0009h - 00020009h - R   - KBD_SCANCODE
-	000Ah - 0002000Ah - R   - KBD_ASCII
-	000Bh - 0002000Bh - R   - KBD_MODIFIER
+	0008h - 00020008h - R/W - KBD_CTRL      - formal
+	0009h - 00020009h - R   - KBD_SCANCODE  - formal
+	000Ah - 0002000Ah - ??? - Reserved
+	000Bh - 0002000Bh - R   - KBD_ASCII     - active ASCII keyboard port
+	000Ch - 0002000Ch - R   - RAM_SIZE
 	
-U   000Ch - 0002000Ch - R 	- RAM_SIZE
 	000Dh - 0002000Dh - ??? - Reserved
 	000Eh - 0002000Eh - ??? - Reserved
-	000Fh - 0002000Fh - R 	- CPU_FEATURES
-	0010h - 00020010h - R/W - BOOT_DEVICE
-	0011h - 00020011h - R/W - SYS_FLAGS
-	0012h - 00020012h - R   - ERROR_CODE
+	000Fh - 0002000Fh - ??? - Reserved
+	0010h - 00020010h - R 	- CPU_FEATURES  - formal
+	0011h - 00020011h - R/W - BOOT_DEVICE   - formal
+	0012h - 00020012h - R/W - SYS_FLAGS     - formal
+	0013h - 00020013h - R   - ERROR_CODE    - formal
 	
-	0013h - 00020013h - R   - RTC_SEC
-	0014h - 00020014h - R   - RTC_MIN
-	0015h - 00020015h - R   - RTC_HOUR
-	0016h - 00020016h - R   - RTC_DAY
-	0017h - 00020017h - R   - RTC_MONTH
-	0018h - 00020018h - R   - RTC_YEAR
-	0019h - 00020019h - R   - RTC_WEEKDAY
-	001Ah - 0002001Ah - R   - RTC_CENTURY
-	001Bh - 0002001Bh - R   - RTC_UNIX_TIME_LO
-	001Ch - 0002001Ch - R   - RTC_UNIX_TIME_HI
+U   0018h - 00020018h - W   - TERM_OUT
+U	0019h - 00020019h - W   - TERM_RESET
+	001Ah - 0002001Ah - R/W - VC_MODE       - default video card mode select
 	
-U   001Dh - 0002001Dh - W   - TERM_OUT
-U	001Eh - 0002001Eh - W   - TERM_RESET
-	001Fh - 0002001Fh - R/W - VC_MODE
+	001Bh - 0002001Bh - ??? - Reserved
+	001Ch - 0002001Ch - ??? - Reserved
+	001Dh - 0002001Dh - ??? - Reserved
+	001Eh - 0002001Eh - ??? - Reserved
+	001Fh - 0002001Fh - ??? - Reserved
 	
-	0020h - 00020020h - R/W - PIT_COMMAND
-	0021h - 00020021h - R/W - PIT_CH0
-	0022h - 00020022h - R/W - PIT_CH1
-	0023h - 00020023h - R/W - PIT_CH2
-	0024h - 00020024h - R   - PIT_STATUS
-	0025h - 00020025h - ??? - Reserved
-	0026h - 00020026h - ??? - Reserved
-	0027h - 00020027h - ??? - Reserved
+	0020h - 00020020h - R   - RTC_SEC
+	0021h - 00020021h - R   - RTC_MIN
+	0022h - 00020022h - R   - RTC_HOUR
+	0023h - 00020023h - R   - RTC_DAY
+	0024h - 00020024h - R   - RTC_MONTH
+	0025h - 00020025h - R   - RTC_YEAR
+	0026h - 00020026h - R   - RTC_WEEKDAY
+	0027h - 00020027h - R   - RTC_CENTURY
+	0028h - 00020028h - R   - RTC_UNIX_TIME - 32-bit little-endian
 	
-	0028h - 00020028h - R   - MOUSE_X
-	0029h - 00020029h - R   - MOUSE_Y
-	002Ah - 0002002Ah - R   - MOUSE_BTN
-	002Bh - 0002002Bh - R   - MOUSE_DELTA_X
-	002Ch - 0002002Ch - R   - MOUSE_DELTA_Y
-	002Dh - 0002002Dh - ??? - Reserved
-	002Eh - 0002002Eh - ??? - Reserved
-	002Fh - 0002002Fh - ??? - Reserved
+	0030h - 00020030h - R/W - PIT_COMMAND
+	0031h - 00020031h - R/W - PIT_CH0
+	0032h - 00020032h - R/W - PIT_CH1
+	0033h - 00020033h - R/W - PIT_CH2
+	0034h - 00020034h - R   - PIT_STATUS
+	0035h - 00020035h - ??? - Reserved
+	0036h - 00020036h - ??? - Reserved
+	0037h - 00020037h - ??? - Reserved
 	
-	0030h - 00020030h - R/W - DEV_CLASS_COUNT
-	0031h - 00020031h - R/W - DEV_CLASS_SELECT
-	0032h - 00020032h - R   - DEV_CLASS_CLASS
-	0033h - 00020033h - R   - DEV_CLASS_VENDOR
-	0034h - 00020034h - R   - DEV_CLASS_NAME
+	0040h - 00020040h - R   - MOUSE_X
+	0044h - 00020044h - R   - MOUSE_Y
+	0048h - 00020048h - R   - MOUSE_BTN
+	004Ch - 0002004Ch - R   - MOUSE_DELTA_X
+	0050h - 00020050h - R   - MOUSE_DELTA_Y
+	0054h - 00020054h - ??? - Reserved
+	0055h - 00020055h - ??? - Reserved
+	0056h - 00020056h - ??? - Reserved
+	0057h - 00020057h - ??? - Reserved
+	
+	0200h - 00020200h - R/W - DEV_CLASS_COUNT
+	0201h - 00020201h - R/W - DEV_CLASS_SELECT
+	0202h - 00020202h - R   - DEV_CLASS_CLASS
+	0203h - 00020203h - R   - DEV_CLASS_VENDOR
+	0204h - 00020204h - R   - DEV_CLASS_NAME
 	   ...
-	0053h - 00020053h - R   - DEV_CLASS_NAME_END
+	023Fh - 0002023Fh - R   - DEV_CLASS_NAME_END
 	
 	XPB1 (Disk controller):
 U	0100h - 00020110h - R   - DISK_STATUS
 U   0101h - 00020111h - R/W - DISK_CTRL
 U   0102h - 00020112h - R/W - DISK_LBA
-    0103h - 00020113h - ??? - Reserved
+    0103h - 00020113h - R/W - DISK_LBA_HI
 R   0104h - 00020114h - R/W - DISK_BUFFER
 R   0105h - 00020115h - R/W - DISK_COUNT
     0106h - 00020116h - R/W - DISK_DRIVE
@@ -165,7 +172,7 @@ Device classes:
 Device vendors:
 	00h - None
 	01h - System
-
+	
 Disk controller commands (DISK_CTRL):
 	00h - Idle / reset
 	01h - Acknowledge ready
@@ -185,7 +192,7 @@ Video cards (selectable via emulator GUI or --vc command line option):
 	"default-text" - 80x25 16-color text mode only
 	"default-mono" - 80x25 green-phosphor monochrome text mode only
 
-Video card "default" modes (selected by VC_MODE 0002001Fh):
+Video card "default" modes (selected by VC_MODE 0002001Ah):
 	00h - 80x25 text, 8x8 font, 16-color VGA palette (640x200)
 	01h - 320x200 256-color graphics (legacy Mode 13h-like)
 	10h - 40x30 text, 8x8 font, 16 colors (320x240)

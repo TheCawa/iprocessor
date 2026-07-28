@@ -199,7 +199,6 @@ class Assembler:
                 if isinstance(n.op, ast.USub): return -_eval(n.operand)
                 if isinstance(n.op, ast.UAdd): return _eval(n.operand)
                 raise ValueError('unsupported unary operator')
-            if isinstance(n, ast.Num): return n.n
             if isinstance(n, ast.Constant) and isinstance(n.value, int): return n.value
             raise ValueError('unsupported node')
         return _eval(node)
