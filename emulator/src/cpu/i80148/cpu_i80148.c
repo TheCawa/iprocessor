@@ -418,8 +418,6 @@ static void term_clear(Cpu* cpu) {
 }
 
 static void term_putchar(Cpu* cpu, char c) {
-    putchar(c);
-    fflush(stdout);
     cpu->screen_dirty = true;
 
     if (!cpu->vram) return;

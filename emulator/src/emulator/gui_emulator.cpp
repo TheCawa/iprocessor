@@ -1014,6 +1014,10 @@ bool emulator_handle_events(Cpu* cpu) {
                     case SDLK_BACKSPACE:  c = '\b'; break;
                     case SDLK_TAB:        c = '\t'; break;
                     case SDLK_ESCAPE:     c = 0x1B; break;
+                    case SDLK_DELETE:     c = 0x7F; break;
+                    case SDLK_KP_PERIOD:  c = 0x7F; break; // keypad Del (NumLock off)
+                    case SDLK_UP:         c = 0x48; break;
+                    case SDLK_DOWN:       c = 0x50; break;
                     default: break;
                 }
                 if (c) {
@@ -1053,6 +1057,10 @@ bool emulator_handle_events(Cpu* cpu) {
                 case SDLK_BACKSPACE: c = '\b'; break;
                 case SDLK_TAB: c = '\t'; break;
                 case SDLK_ESCAPE: c = 0x1B; break;
+                case SDLK_DELETE: c = 0x7F; break;
+                case SDLK_KP_PERIOD: c = 0x7F; break; // keypad Del (NumLock off)
+                case SDLK_UP:     c = 0x48; break;
+                case SDLK_DOWN:   c = 0x50; break;
                 default: break;
             }
             if (c) {

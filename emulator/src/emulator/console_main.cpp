@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <windows.h>
+#define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include "backends.h"
 #include "pit.h"
@@ -248,6 +249,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "\n=== Step limit reached (" << steps << " steps) ===\n";
     }
+
     print_registers(backend, &cpu);
 
     return 0;
