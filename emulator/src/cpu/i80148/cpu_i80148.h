@@ -104,17 +104,24 @@ typedef CpuMode_i80148 CpuMode;
 
 // i80148-specific memory map constants
 #define TERM_OUT_ADDR_I80148    0x00020018
-#define TERM_RESET_ADDR_I80148  0x00020019
+#define TERM_COMMAND_ADDR_I80148 0x00020019  // replaces TERM_RESET
 #define VC_MODE_ADDR_I80148     0x0002001A  // default video card mode select
+#define TERM_ATTR_ADDR_I80148   0x0002001B  // 32-bit fg/bg attribute
 #define KBD_ASCII_ADDR_I80148   0x0002000B
 #define MEM_SIZE_ADDR_I80148    0x0002000C
-#define VRAM_BANK_REG_I80148    0x00020007  // video memory bank selector
-#define VBUFFER_BASE_I80148     0x00100000  // physical VRAM base
+#define VRAM_BANK_REG_I80148    0x00020007  // video memory bank selector (legacy)
+#define VBUFFER_BASE_I80148     0x00100000  // physical VRAM base (legacy, now in separate vram buffer)
 #define VRAM_WINDOW_BASE        0x00050000  // MMIO window into VRAM
 #define VRAM_WINDOW_SIZE        0x00010000  // 64 KB window
 #define USER_RAM_START_I80148   0x00060000  // start of user-accessible RAM
+#define TERM_RES_X_ADDR_I80148  0x00020060
+#define TERM_RES_Y_ADDR_I80148  0x00020064
+#define TERM_POS_X_ADDR_I80148  0x00020068
+#define TERM_POS_Y_ADDR_I80148  0x0002006C
+#define TERM_BUFFER_ADDR_I80148 0x00020070
 #define TERM_COLS_I80148        80
 #define TERM_ROWS_I80148        25
+#define VRAM_SIZE_DEFAULT_I80148  (512 * 1024)  // 512 KB default VRAM
 
 // i80148 backend state stored in cpu->backend_data
 typedef struct {

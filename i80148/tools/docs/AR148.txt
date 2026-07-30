@@ -1,0 +1,56 @@
+AR148 - Cawas Archiver for i80148
+
+	-# Version: 0.1
+	-# Target: i80148 object files
+	-# Output: static library archive (*.a)
+
+Usage:
+	python AR148.py rcs archive.a file1.o [file2.o ...]
+	python AR148.py t archive.a
+	python AR148.py x archive.a [member1 ...]
+
+	-# rcs creates or replaces archive.a with the given object members.
+	-# t lists all members with their file offsets and sizes.
+	-# x extracts all members, or only the ones explicitly named.
+
+
+Commands:
+	#Command - #Description
+	rcs       - Create or replace an archive with object files
+	t         - List archive contents
+	x         - Extract members (all or by name)
+
+
+Archive format v1:
+	#Field         - #Size - #Description
+	Magic          - 4     - 'CWA\0'
+	Version        - 4     - 1 (big-endian)
+	Count          - 4     - Number of members (big-endian)
+	Reserved       - 4     - Padding, must be zero
+	Member headers - 40*n  - One header per member (name + offset + size)
+	Member data    - var   - Raw object data at recorded offsets
+
+	-# Each member header is 40 bytes: name (32) + offset (4) + size (4).
+	-# Member names are NUL-padded ASCII, up to 31 characters.
+	-# Object members may be either binary CWO\0 objects or JSON objects.
+
+
+Example:
+	$ python AR148.py rcs libio.a putc.o getc.o serial.o
+	Created archive 'libio.a' with 3 member(s)
+
+	$ python AR148.py t libio.a
+	libio.a: 3 member(s)
+	       0 putc.o                           offset=     136 size=     248
+	       1 getc.o                           offset=     384 size=     312
+	       2 serial.o                         offset=     696 size=     156
+
+	$ python AR148.py x libio.a putc.o
+	Extracted: putc.o (248 bytes)
+	Extracted 1 member(s)
+
+
+Known limitations:
+	-# Does not support symbol indexes or thin archives.
+	-# Member names longer than 31 bytes are truncated.
+	-# Extracted files are written to the current directory.

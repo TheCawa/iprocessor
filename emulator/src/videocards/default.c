@@ -190,6 +190,10 @@ static uint8_t default_get_mode_id(Cpu* cpu) {
     return 0x00;
 }
 
+static inline uint32_t default_vram_base(Cpu* cpu) {
+    return cpu ? cpu->term_buffer : 0;
+}
+
 static void default_reset(Cpu* cpu) {
     if (!cpu || !cpu->mem) return;
 
@@ -198,14 +202,11 @@ static void default_reset(Cpu* cpu) {
         cpu->mem[DEFAULT_MODE_ADDR] = 0x00;
     }
 
-    // Clear the largest possible video buffer area (text + graphics).
-    uint32_t base = cpu->backend ? cpu->backend->vbuffer_base : 0x00100000;
+    // Clear the largest possible VRAM area.
     uint32_t size = MAX_GFX_WIDTH * MAX_GFX_HEIGHT;
-    if (base + size > cpu->mem_size) {
-        size = (base < cpu->mem_size) ? (uint32_t)(cpu->mem_size - base) : 0;
-    }
-    if (size > 0) {
-        memset(&cpu->mem[base], 0, size);
+    if (size > cpu->vram_size) size = (uint32_t)cpu->vram_size;
+    if (cpu->vram && size > 0) {
+        memset(cpu->vram, 0, size);
     }
 
     cpu->screen_dirty = 1;
@@ -219,23 +220,31 @@ static void default_update_text(Cpu* cpu, const VideoMode* mode) {
     if (SDL_LockTexture(default_texture, NULL, (void**)&pixels, &pitch) != 0) return;
 
     int stride = pitch / sizeof(uint32_t);
-    uint32_t base = cpu->backend->vbuffer_base;
+    uint32_t base = default_vram_base(cpu);
     int dirty = cpu->screen_dirty;
+    bool cursor_visible = cpu->term_cursor_visible;
+    uint32_t cx = cpu->term_pos_x;
+    uint32_t cy = cpu->term_pos_y;
+    bool cursor_blink = ((SDL_GetTicks() / 500) & 1) == 0;
 
     for (int row = 0; row < mode->rows; row++) {
         for (int col = 0; col < mode->cols; col++) {
             int cell_idx = row * mode->cols + col;
             uint32_t addr = base + (uint32_t)cell_idx * 2;
 
-            uint8_t ch   = (addr + 1 < cpu->mem_size) ? cpu->mem[addr]     : ' ';
-            uint8_t attr = (addr + 1 < cpu->mem_size) ? cpu->mem[addr + 1] : 0x07;
+            uint8_t ch   = (cpu->vram && addr + 1 < cpu->vram_size) ? cpu->vram[addr]     : ' ';
+            uint8_t attr = (cpu->vram && addr + 1 < cpu->vram_size) ? cpu->vram[addr + 1] : 0x07;
 
             uint32_t cell_hash = ((uint32_t)ch << 8) | attr;
-            if (!dirty && !default_force_redraw && default_prev_text[cell_idx] == cell_hash) continue;
+            bool is_cursor = cursor_visible && cursor_blink && (uint32_t)col == cx && (uint32_t)row == cy;
+            if (!dirty && !default_force_redraw && !is_cursor && default_prev_text[cell_idx] == cell_hash) continue;
             default_prev_text[cell_idx] = cell_hash;
 
             uint32_t fg = default_get_color(attr, 1);
             uint32_t bg = default_get_color(attr, 0);
+            if (is_cursor) {
+                uint32_t tmp = fg; fg = bg; bg = tmp;
+            }
 
             int px0 = col * mode->font_w;
             int py0 = row * mode->font_h;
@@ -278,7 +287,7 @@ static void default_update_gfx(Cpu* cpu, const VideoMode* mode) {
     if (SDL_LockTexture(default_texture, NULL, (void**)&pixels, &pitch) != 0) return;
 
     int stride = pitch / sizeof(uint32_t);
-    uint32_t base = cpu->backend->vbuffer_base;
+    uint32_t base = default_vram_base(cpu);
     int dirty = cpu->screen_dirty;
 
     for (int y = 0; y < mode->height; y++) {
@@ -286,12 +295,28 @@ static void default_update_gfx(Cpu* cpu, const VideoMode* mode) {
             int idx = y * mode->width + x;
             uint32_t addr = base + (uint32_t)idx;
 
-            uint8_t pix = (addr < cpu->mem_size) ? cpu->mem[addr] : 0;
+            uint8_t pix = (cpu->vram && addr < cpu->vram_size) ? cpu->vram[addr] : 0;
             if (!dirty && !default_force_redraw && default_prev_gfx[idx] == pix) continue;
             default_prev_gfx[idx] = pix;
 
             // Mode 13h style: standard VGA 256-color palette.
             pixels[y * stride + x] = vga_palette[pix];
+        }
+    }
+
+    // Draw crosshair cursor if visible.
+    if (cpu->term_cursor_visible && ((SDL_GetTicks() / 500) & 1) == 0) {
+        uint32_t cx = cpu->term_pos_x;
+        uint32_t cy = cpu->term_pos_y;
+        if (cx < (uint32_t)mode->width && cy < (uint32_t)mode->height) {
+            for (int dx = -4; dx <= 4; dx++) {
+                int px = (int)cx + dx;
+                if (px >= 0 && px < mode->width) pixels[cy * stride + px] = 0xFFFFFFFF;
+            }
+            for (int dy = -4; dy <= 4; dy++) {
+                int py = (int)cy + dy;
+                if (py >= 0 && py < mode->height) pixels[py * stride + cx] = 0xFFFFFFFF;
+            }
         }
     }
 
@@ -308,6 +333,15 @@ static void default_update(Cpu* cpu) {
     }
 
     if (!default_texture) return;
+
+    // Publish current resolution so software can read it from TERM_RES_X/Y.
+    if (mode->type == MODE_TYPE_GFX) {
+        cpu->term_res_x = (uint32_t)mode->width;
+        cpu->term_res_y = (uint32_t)mode->height;
+    } else {
+        cpu->term_res_x = (uint32_t)mode->cols;
+        cpu->term_res_y = (uint32_t)mode->rows;
+    }
 
     if (mode->type == MODE_TYPE_GFX) {
         default_update_gfx(cpu, mode);

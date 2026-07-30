@@ -74,16 +74,32 @@ int main(int argc, char* argv[]) {
 
     const VideoCard* vc = videocard_get_default();
 
-    // Parse arguments. Usage: emulator [--cpu name] [--bios path] <file> [load_addr] [disk_image] [--vc name]
+    // Parse arguments. Usage: emulator [--cpu name] [--bios path] [--ram size] [--vram size] <file> [load_addr] [disk_image] [--vc name]
     const char* filename = nullptr;
     uint32_t load_addr = 0;
     bool load_addr_set = false;
     const char* disk_image = nullptr;
     const char* cpu_name = "i80148";
     const char* bios_path = nullptr;
+    const char* ram_size_str = nullptr;
+    const char* vram_size_str = nullptr;
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--vc") == 0) {
+        if (strcmp(argv[i], "--ram") == 0) {
+            if (i + 1 < argc) {
+                ram_size_str = argv[++i];
+            } else {
+                std::cerr << "[ERROR] --ram requires a size (e.g. 16M, 512K)\n";
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--vram") == 0) {
+            if (i + 1 < argc) {
+                vram_size_str = argv[++i];
+            } else {
+                std::cerr << "[ERROR] --vram requires a size (e.g. 512K, 1M)\n";
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--vc") == 0) {
             if (i + 1 < argc) {
                 const char* name = argv[++i];
                 const VideoCard* chosen = videocard_find_by_name(name);
@@ -130,11 +146,17 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    size_t ram_size = backend->mem_size_default;
+    size_t ram_size = ram_size_str ? cpu_parse_size(ram_size_str) : backend->mem_size_default;
+    if (ram_size == 0) ram_size = backend->mem_size_default;
+    size_t vram_size = vram_size_str ? cpu_parse_size(vram_size_str) : backend->vram_size_default;
+    if (vram_size == 0) vram_size = backend->vram_size_default;
+
     std::vector<uint8_t> memory(ram_size, 0);
+    std::vector<uint8_t> vram(vram_size, 0);
     Cpu cpu;
 
-    cpu_init(&cpu, backend, memory.data(), ram_size);
+    emulator_set_desired_ram_vram(ram_size / 1024, vram_size / 1024);
+    cpu_init(&cpu, backend, memory.data(), ram_size, vram.data(), vram_size);
     cpu.gui_mode = true;
     pit_init(&cpu);
 
@@ -243,7 +265,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        emulator_render(&cpu, renderer, memory);
+        emulator_render(&cpu, renderer, memory, vram);
         Uint32 render_elapsed = SDL_GetTicks() - frame_start;
         if (render_elapsed < 16) {
             SDL_Delay(16 - render_elapsed);

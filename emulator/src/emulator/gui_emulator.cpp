@@ -73,6 +73,10 @@ static int g_cpu_fixed_steps = 50;
 static int g_cpu_max_steps = 100000;
 static int g_cpu_budget_ms = 10;
 
+// RAM/VRAM sizes requested by the user (applied on Reset CPU / CPU switch).
+static size_t g_desired_ram_kb = 0;
+static size_t g_desired_vram_kb = 0;
+
 // Input capture state: when true, keyboard/mouse events go to the emulated CPU.
 static bool g_input_captured = false;
 
@@ -142,7 +146,24 @@ static void emulator_release_input(void) {
     emulator_set_input_capture(false);
 }
 
-static void emulator_reset_cpu(Cpu* cpu) {
+static void emulator_reset_cpu(Cpu* cpu, std::vector<uint8_t>& memory, std::vector<uint8_t>& vram) {
+    // Apply desired RAM/VRAM sizes before reset.
+    size_t ram_kb = g_desired_ram_kb ? g_desired_ram_kb
+                   : (cpu->backend ? cpu->backend->mem_size_default / 1024 : 16 * 1024);
+    size_t vram_kb = g_desired_vram_kb ? g_desired_vram_kb
+                    : (cpu->backend ? cpu->backend->vram_size_default / 1024 : 512);
+    size_t ram_bytes = ram_kb * 1024;
+    size_t vram_bytes = vram_kb * 1024;
+
+    if (memory.size() != ram_bytes || vram.size() != vram_bytes) {
+        memory.assign(ram_bytes, 0);
+        vram.assign(vram_bytes, 0);
+        cpu->mem = memory.data();
+        cpu->mem_size = memory.size();
+        cpu->vram = vram.data();
+        cpu->vram_size = vram.size();
+    }
+
     cpu_reset(cpu);
     if (g_vc && g_vc->reset) {
         g_vc->reset(cpu);
@@ -151,6 +172,10 @@ static void emulator_reset_cpu(Cpu* cpu) {
     const uint32_t ram_start = 0x00020000;
     if (ram_start < cpu->mem_size) {
         memset(cpu->mem + ram_start, 0, cpu->mem_size - ram_start);
+    }
+    // Clear VRAM.
+    if (cpu->vram && cpu->vram_size > 0) {
+        memset(cpu->vram, 0, cpu->vram_size);
     }
     // Reset PC48 default video card mode select to 80x25 text mode.
     const uint32_t vc_mode_addr = 0x0002001A;
@@ -166,6 +191,11 @@ void emulator_set_fixed_steps(int steps) { g_cpu_fixed_steps = steps > 0 ? steps
 int  emulator_get_fixed_steps(void) { return g_cpu_fixed_steps; }
 void emulator_set_max_steps(int steps) { g_cpu_max_steps = steps > 0 ? steps : 1; }
 int  emulator_get_max_steps(void) { return g_cpu_max_steps; }
+
+void emulator_set_desired_ram_vram(size_t ram_kb, size_t vram_kb) {
+    g_desired_ram_kb = ram_kb;
+    g_desired_vram_kb = vram_kb;
+}
 
 void emulator_report_steps(int steps) {
     g_steps_this_frame = steps;
@@ -212,7 +242,7 @@ bool emulator_init(SDL_Window** out_window, SDL_Renderer** out_renderer, const V
     return true;
 }
 
-bool emulator_switch_cpu(Cpu* cpu, const CpuBackend* new_backend, std::vector<uint8_t>& memory) {
+bool emulator_switch_cpu(Cpu* cpu, const CpuBackend* new_backend, std::vector<uint8_t>& memory, std::vector<uint8_t>& vram) {
     if (!new_backend || !g_window) return false;
 
     // Preserve disk image paths across reinit.
@@ -224,8 +254,11 @@ bool emulator_switch_cpu(Cpu* cpu, const CpuBackend* new_backend, std::vector<ui
     }
     disk_free_image(cpu);
 
-    memory.assign(new_backend->mem_size_default, 0);
-    cpu_init(cpu, new_backend, memory.data(), memory.size());
+    size_t ram_kb = g_desired_ram_kb ? g_desired_ram_kb : (new_backend->mem_size_default / 1024);
+    size_t vram_kb = g_desired_vram_kb ? g_desired_vram_kb : (new_backend->vram_size_default / 1024);
+    memory.assign(ram_kb * 1024, 0);
+    vram.assign(vram_kb * 1024, 0);
+    cpu_init(cpu, new_backend, memory.data(), memory.size(), vram.data(), vram.size());
     g_current_backend = new_backend;
 
     for (int i = 0; i < DISK_MAX_DRIVES; i++) {
@@ -441,7 +474,8 @@ static bool load_machine_state(Cpu* cpu, const char* filename, std::vector<uint8
     return ok;
 }
 
-void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& memory) {
+void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& memory, std::vector<uint8_t>& vram) {
+    (void)vram;  // available for future VRAM viewers
     if (cpu && cpu->backend && !g_current_backend) {
         g_current_backend = cpu->backend;
     }
@@ -502,7 +536,7 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                 }
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Reset CPU")) { emulator_reset_cpu(cpu); g_cpu_running = true; }
+            if (ImGui::MenuItem("Reset CPU")) { emulator_reset_cpu(cpu, memory, vram); g_cpu_running = true; }
             if (ImGui::MenuItem("Exit")) { emulator_shutdown(); exit(0); }
             ImGui::EndMenu();
         }
@@ -516,7 +550,7 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                     if (!b) continue;
                     bool selected = (b == g_current_backend);
                     if (ImGui::Selectable(b->name, selected)) {
-                        emulator_switch_cpu(cpu, b, memory);
+                        emulator_switch_cpu(cpu, b, memory, vram);
                     }
                     if (selected) ImGui::SetItemDefaultFocus();
                 }
@@ -578,6 +612,21 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
                     g_vc->reset(cpu);
                 }
             }
+
+            // RAM / VRAM size editors. Sizes are applied on Reset CPU.
+            int ram_kb_editor = (int)(g_desired_ram_kb ? g_desired_ram_kb : (cpu->backend ? cpu->backend->mem_size_default / 1024 : 16 * 1024));
+            int vram_kb_editor = (int)(g_desired_vram_kb ? g_desired_vram_kb : (cpu->backend ? cpu->backend->vram_size_default / 1024 : 512));
+            ImGui::SetNextItemWidth(120.0f);
+            if (ImGui::InputInt("RAM (KB)", &ram_kb_editor, 64, 1024)) {
+                if (ram_kb_editor < 64) ram_kb_editor = 64;
+                g_desired_ram_kb = (size_t)ram_kb_editor;
+            }
+            ImGui::SetNextItemWidth(120.0f);
+            if (ImGui::InputInt("VRAM (KB)", &vram_kb_editor, 64, 1024)) {
+                if (vram_kb_editor < 64) vram_kb_editor = 64;
+                g_desired_vram_kb = (size_t)vram_kb_editor;
+            }
+            ImGui::TextDisabled("Applied on Reset CPU");
 
             ImGui::Separator();
 
@@ -754,7 +803,7 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
             ImGui::SameLine();
             if (ImGui::Button("Step", ImVec2(80, 0))) g_step_requested = true;
             ImGui::SameLine();
-            if (ImGui::Button("Reset", ImVec2(80, 0))) { emulator_reset_cpu(cpu); g_cpu_running = true; }
+            if (ImGui::Button("Reset", ImVec2(80, 0))) { emulator_reset_cpu(cpu, memory, vram); g_cpu_running = true; }
             ImGui::SameLine();
             ImGui::Text("Status: %s", cpu->halted ? "HALTED" : (g_cpu_running ? "RUNNING" : "PAUSED"));
 

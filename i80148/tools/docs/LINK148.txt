@@ -1,0 +1,146 @@
+LINK148 - Cawas Linker for i80148
+
+	-# Version: 0.1
+	-# Target: i80148 (32-bit flat architecture)
+	-# Output: flat binary (*.bin) + Logisim hex (*.hex)
+	-# Byte order: BIG ENDIAN
+
+Usage:
+	python LINK148.py [-T script.ld] <input1.o> [input2.o ...] [-o output.bin] [--base 0x00000000] [--entry SYMBOL]
+
+	-# Input files may be object files (*.o) or static archives (*.a).
+	-# Archives are searched on demand to resolve undefined symbols.
+	-# If script.ld is omitted, a default contiguous layout is used.
+	-# A file ending in .ld can be passed without -T.
+
+
+Input file formats:
+	#Format  - #Description
+	*.o bin  - Object file with magic 'CWO\0'
+	*.o json - Object file in human-readable JSON format
+	*.a      - AR148 archive containing object members
+
+	-# Object members inside an archive may be binary or JSON.
+	-# Only archive members that define currently undefined symbols are loaded.
+
+
+CLI options:
+	#Option      - #Description
+	-o file      - Output binary (default output.bin)
+	-T file      - Linker script
+	--base addr  - Base address for default layout (default 0x00000000)
+	--entry sym  - Override entry symbol
+
+	-# The *.hex file always has the same base name as the *.bin file.
+
+
+Object file format v1:
+	#Part            - #Size  - #Description
+	Header           - 64     - magic, version, arch, counts, data offset, entry symbol
+	Section headers  - 32*n   - name, type, address, size, data offset
+	Symbol table     - 48*n   - name, section index, offset, flags
+	Relocation table - 48*n   - name, section index, offset, type, pc_after
+	Section data     - var    - raw bytes for text/data, none for bss
+
+	-# Magic is the four bytes 'CWO\0'.
+	-# Version is 1, architecture is 1 (i80148); all multi-byte fields are big-endian.
+	-# Section index 0xFFFFFFFF means an undefined/external symbol.
+	-# Symbol flag bit 0 marks a globally visible symbol.
+
+
+Sections:
+	#Name - #Description
+	text  - Code segment
+	data  - Initialized data segment
+	bss   - Zero-initialized data segment (size only)
+
+	-# All object files must provide these three sections; bss may have size 0.
+
+
+Relocation types:
+	#Type  - #Description
+	abs32  - Absolute 32-bit address
+	rel32  - PC-relative 32-bit offset
+
+	-# rel32 is used for CALL and JMP targets.
+	-# abs32 is used for LDI.DW and flat memory addresses in STR/LOD.
+
+
+Symbol resolution:
+	-# Each object contributes its .global symbols to the global symbol table.
+	-# A relocation is first resolved within the same object (local labels).
+	-# If the symbol is not local, the linker searches the global symbol table.
+	-# Archives are scanned repeatedly until no new undefined symbols can be resolved.
+
+
+Default layout:
+	-# Without a linker script, sections are laid out contiguously from --base:
+	-#     text at base_addr
+	-#     data immediately after text
+	-#     bss immediately after data
+
+
+Linker script syntax:
+	-# Scripts support C-like // and /* */ comments.
+	-# ENTRY(symbol); declares the entry point.
+	-# SECTIONS { ... } groups output section definitions.
+	-# symbol = expression; defines a linker symbol.
+	-# . = expression; sets the current location counter.
+	-# .name [addr] : { *(input1 input2 ...) } merges input sections into an output section.
+
+Expressions:
+	#Symbol        - #Description
+	number         - Integer literal (decimal or 0x hex)
+	.              - Current location counter
+	+  -  *  /     - Arithmetic operators
+	ALIGN(n)       - Align current location to n bytes
+	SIZEOF(.name)  - Size of an output section
+
+Example linker script:
+	ENTRY(_start);
+
+	SECTIONS
+	{
+		. = 0x00050000;
+		.text : { *(.text) }
+		.data : { *(.data) }
+		.bss : { *(.bss) }
+	}
+
+	-# Input section names .text, .data and .bss may be written without the leading dot.
+	-# The output section .bss is not written to the binary image.
+
+
+Runtime symbols:
+	#Symbol      - #Description
+	_DATA_START  - Address of .data
+	_DATA_END    - End address of .data
+	_BSS_START   - Address of .bss
+	_BSS_END     - End address of .bss
+	_END         - End address of .bss
+
+	-# These symbols are added automatically if not already defined.
+
+
+Entry point:
+	-# Priority (highest first):
+	-#     1. ENTRY(...) in the linker script
+	-#     2. --entry on the command line
+	-#     3. .entry recorded in the first object file
+	-#     4. Default symbol _start
+	-# The chosen entry symbol must be defined and global.
+
+
+Example:
+	$ python LINK148.py startup.o main.o libio.a -o program.bin --entry _start
+	Linked 1024 bytes
+	Sections: text=0x00050000 (512 bytes), data=0x00050200 (256 bytes), bss=0x00050300 (256 bytes)
+	Global symbols: {_START, _DATA_START, _DATA_END, _BSS_START, _BSS_END, _END}
+	Entry point: _START = 0x00050000
+	Written: program.bin and program.hex
+
+
+Known limitations:
+	-# Only abs32 and rel32 relocations are supported.
+	-# Linker scripts do not support MEMORY, PHDRS or ASSERT.
+	-# Archive loading is greedy: the first member that satisfies an undefined symbol is loaded.

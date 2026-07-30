@@ -40,7 +40,15 @@ void cpu_init_i80148(Cpu* cpu) {
     if (cpu->backend_data) {
         memset(cpu->backend_data, 0, sizeof(i80148_State));
     }
-    cpu->term_attr = 0x07;
+    cpu->term_buffer = 0;
+    cpu->term_attr = 0x00000007;  // fg=7 (white), bg=0 (black)
+    cpu->term_res_x = TERM_COLS_I80148;
+    cpu->term_res_y = TERM_ROWS_I80148;
+    cpu->term_pos_x = 0;
+    cpu->term_pos_y = 0;
+    cpu->term_cursor_x = 0;
+    cpu->term_cursor_y = 0;
+    cpu->term_cursor_visible = true;
     cpu->irq_enabled = false;
     cpu->halted = false;
     cpu->screen_dirty = true;
@@ -56,7 +64,15 @@ void cpu_reset_i80148(Cpu* cpu) {
     cpu->halted = false;
     cpu->irq_enabled = false;
     cpu->screen_dirty = true;
-    cpu->term_attr = 0x07;
+    cpu->term_buffer = 0;
+    cpu->term_attr = 0x00000007;
+    cpu->term_res_x = TERM_COLS_I80148;
+    cpu->term_res_y = TERM_ROWS_I80148;
+    cpu->term_pos_x = 0;
+    cpu->term_pos_y = 0;
+    cpu->term_cursor_x = 0;
+    cpu->term_cursor_y = 0;
+    cpu->term_cursor_visible = true;
     input_reset(cpu);
     pit_reset_pending(cpu);
     term_clear(cpu);
@@ -117,25 +133,68 @@ uint64_t cpu_get_reg_i80148(Cpu* cpu, uint8_t idx) {
     return state(cpu)->regs[idx] & MODE_MASKS[mode];
 }
 
-// Translate a VRAM window address (0x00050000..0x0005FFFF) into the physical
-// VRAM address selected by the bank register at 0x00020007.
+// Translate a VRAM window address (0x00050000..0x0005FFFF) into an offset
+// inside cpu->vram using the current TERM_BUFFER base.
 static inline uint32_t vram_window_translate(Cpu* cpu, uint32_t addr) {
-    uint32_t bank = 0;
-    if (VRAM_BANK_REG_I80148 < cpu->mem_size) {
-        bank = cpu->mem[VRAM_BANK_REG_I80148];
+    return cpu->term_buffer + (addr - VRAM_WINDOW_BASE);
+}
+
+static uint64_t cpu_read_vram(Cpu* cpu, uint32_t offset, int mode) {
+    if (!cpu->vram || offset >= cpu->vram_size) return 0;
+    int bytes = mode_size(mode);
+    uint64_t val = 0;
+    for (int i = 0; i < bytes; i++) {
+        uint32_t o = offset + i;
+        if (o >= cpu->vram_size) break;
+        val = (val << 8) | cpu->vram[o];
     }
-    return VBUFFER_BASE_I80148 + ((uint32_t)bank * VRAM_WINDOW_SIZE) + (addr - VRAM_WINDOW_BASE);
+    return val;
+}
+
+static void cpu_write_vram(Cpu* cpu, uint32_t offset, uint64_t val, int mode) {
+    if (!cpu->vram || offset >= cpu->vram_size) return;
+    cpu->screen_dirty = true;
+    int bytes = mode_size(mode);
+    for (int i = 0; i < bytes; i++) {
+        uint32_t o = offset + i;
+        if (o >= cpu->vram_size) break;
+        cpu->vram[o] = (val >> ((bytes - 1 - i) * 8)) & 0xFF;
+    }
 }
 
 // Big-endian memory access
 uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
     // VRAM window read (0x00050000..0x0005FFFF).
     if (addr >= VRAM_WINDOW_BASE && addr < VRAM_WINDOW_BASE + VRAM_WINDOW_SIZE) {
-        addr = vram_window_translate(cpu, addr);
+        uint32_t voff = vram_window_translate(cpu, addr);
+        return cpu_read_vram(cpu, voff, mode);
+    }
+
+    // Legacy alias: old programs write to physical VRAM at 0x00100000.
+    if (addr >= VBUFFER_BASE_I80148 && addr < VBUFFER_BASE_I80148 + (uint32_t)cpu->vram_size) {
+        return cpu_read_vram(cpu, addr - VBUFFER_BASE_I80148, mode);
     }
 
     if (mode == MODE_DWORD && addr == 0x0002000C) {
         return (uint32_t)cpu->mem_size;
+    }
+    if (mode == MODE_DWORD && addr == TERM_ATTR_ADDR_I80148) {
+        return cpu->term_attr;
+    }
+    if (mode == MODE_DWORD && addr == TERM_RES_X_ADDR_I80148) {
+        return cpu->term_res_x;
+    }
+    if (mode == MODE_DWORD && addr == TERM_RES_Y_ADDR_I80148) {
+        return cpu->term_res_y;
+    }
+    if (mode == MODE_DWORD && addr == TERM_POS_X_ADDR_I80148) {
+        return cpu->term_pos_x;
+    }
+    if (mode == MODE_DWORD && addr == TERM_POS_Y_ADDR_I80148) {
+        return cpu->term_pos_y;
+    }
+    if (mode == MODE_DWORD && addr == TERM_BUFFER_ADDR_I80148) {
+        return cpu->term_buffer;
     }
     if (mode == MODE_BYTE && addr == KBD_ASCII_ADDR_I80148) {
         return kbd_read_ascii((Cpu*)cpu);
@@ -215,7 +274,15 @@ static void cpu_trigger_int(Cpu* cpu, uint8_t vector) {
 void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
     // VRAM window write (0x00050000..0x0005FFFF).
     if (addr >= VRAM_WINDOW_BASE && addr < VRAM_WINDOW_BASE + VRAM_WINDOW_SIZE) {
-        addr = vram_window_translate(cpu, addr);
+        uint32_t voff = vram_window_translate(cpu, addr);
+        cpu_write_vram(cpu, voff, val, mode);
+        return;
+    }
+
+    // Legacy alias: old programs write to physical VRAM at 0x00100000.
+    if (addr >= VBUFFER_BASE_I80148 && addr < VBUFFER_BASE_I80148 + (uint32_t)cpu->vram_size) {
+        cpu_write_vram(cpu, addr - VBUFFER_BASE_I80148, val, mode);
+        return;
     }
 
     // MMIO intercepts (ignore access size, like real hardware does)
@@ -223,8 +290,38 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
         term_putchar(cpu, (char)(val & 0xFF));
         return;
     }
-    if (addr == TERM_RESET_ADDR_I80148) {
-        term_clear(cpu);
+    if (addr == TERM_COMMAND_ADDR_I80148) {
+        uint8_t cmd = (uint8_t)(val & 0xFF);
+        if (cmd == 0x01) {
+            term_clear(cpu);
+        } else if (cmd == 0x02) {
+            cpu->term_cursor_visible = true;
+            cpu->screen_dirty = true;
+        } else if (cmd == 0x03) {
+            cpu->term_cursor_visible = false;
+            cpu->screen_dirty = true;
+        }
+        return;
+    }
+    if (addr == TERM_ATTR_ADDR_I80148) {
+        cpu->term_attr = (uint32_t)(val & 0xFFFFFFFF);
+        return;
+    }
+    if (addr == TERM_POS_X_ADDR_I80148) {
+        cpu->term_pos_x = (uint32_t)(val & 0xFFFFFFFF);
+        cpu->term_cursor_x = (uint8_t)(cpu->term_pos_x & 0xFF);
+        cpu->screen_dirty = true;
+        return;
+    }
+    if (addr == TERM_POS_Y_ADDR_I80148) {
+        cpu->term_pos_y = (uint32_t)(val & 0xFFFFFFFF);
+        cpu->term_cursor_y = (uint8_t)(cpu->term_pos_y & 0xFF);
+        cpu->screen_dirty = true;
+        return;
+    }
+    if (addr == TERM_BUFFER_ADDR_I80148) {
+        cpu->term_buffer = (uint32_t)(val & 0xFFFFFFFF);
+        cpu->screen_dirty = true;
         return;
     }
     if (addr == VC_MODE_ADDR_I80148) {
@@ -275,32 +372,48 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
     }
 }
 
+static uint32_t term_vram_offset(Cpu* cpu) {
+    return cpu->term_buffer;
+}
+
 static void term_scroll(Cpu* cpu) {
+    if (!cpu->vram) return;
+    uint32_t base = term_vram_offset(cpu);
+    uint32_t cols = cpu->term_res_x ? cpu->term_res_x : TERM_COLS_I80148;
+    uint32_t rows = cpu->term_res_y ? cpu->term_res_y : TERM_ROWS_I80148;
+    if (base + rows * cols * 2 > cpu->vram_size) return;
+
     // Scroll text buffer up by one line
-    uint32_t base = VBUFFER_BASE_I80148;
-    for (int y = 0; y < TERM_ROWS_I80148 - 1; y++) {
-        for (int x = 0; x < TERM_COLS_I80148; x++) {
-            cpu->mem[base + (y * TERM_COLS_I80148 + x) * 2] = cpu->mem[base + ((y + 1) * TERM_COLS_I80148 + x) * 2];
-            cpu->mem[base + (y * TERM_COLS_I80148 + x) * 2 + 1] = cpu->mem[base + ((y + 1) * TERM_COLS_I80148 + x) * 2 + 1];
+    for (uint32_t y = 0; y < rows - 1; y++) {
+        for (uint32_t x = 0; x < cols; x++) {
+            cpu->vram[base + (y * cols + x) * 2] = cpu->vram[base + ((y + 1) * cols + x) * 2];
+            cpu->vram[base + (y * cols + x) * 2 + 1] = cpu->vram[base + ((y + 1) * cols + x) * 2 + 1];
         }
     }
     // Clear last line
-    for (int x = 0; x < TERM_COLS_I80148; x++) {
-        cpu->mem[base + ((TERM_ROWS_I80148 - 1) * TERM_COLS_I80148 + x) * 2] = ' ';
-        cpu->mem[base + ((TERM_ROWS_I80148 - 1) * TERM_COLS_I80148 + x) * 2 + 1] = cpu->term_attr;
+    uint8_t attr = (uint8_t)(cpu->term_attr & 0xFF);
+    for (uint32_t x = 0; x < cols; x++) {
+        cpu->vram[base + ((rows - 1) * cols + x) * 2] = ' ';
+        cpu->vram[base + ((rows - 1) * cols + x) * 2 + 1] = attr;
     }
 }
 
 static void term_clear(Cpu* cpu) {
-    // Clear the whole text buffer and home the cursor (TERM_RESET semantics)
-    uint32_t base = VBUFFER_BASE_I80148;
-    if (base + (uint32_t)(TERM_COLS_I80148 * TERM_ROWS_I80148 * 2) > cpu->mem_size) return;
-    for (int i = 0; i < TERM_COLS_I80148 * TERM_ROWS_I80148; i++) {
-        cpu->mem[base + i * 2] = ' ';
-        cpu->mem[base + i * 2 + 1] = cpu->term_attr;
+    if (!cpu->vram) return;
+    uint32_t base = term_vram_offset(cpu);
+    uint32_t cols = cpu->term_res_x ? cpu->term_res_x : TERM_COLS_I80148;
+    uint32_t rows = cpu->term_res_y ? cpu->term_res_y : TERM_ROWS_I80148;
+    if (base + rows * cols * 2 > cpu->vram_size) return;
+
+    uint8_t attr = (uint8_t)(cpu->term_attr & 0xFF);
+    for (uint32_t i = 0; i < cols * rows; i++) {
+        cpu->vram[base + i * 2] = ' ';
+        cpu->vram[base + i * 2 + 1] = attr;
     }
     cpu->term_cursor_x = 0;
     cpu->term_cursor_y = 0;
+    cpu->term_pos_x = 0;
+    cpu->term_pos_y = 0;
     cpu->screen_dirty = true;
 }
 
@@ -309,32 +422,47 @@ static void term_putchar(Cpu* cpu, char c) {
     fflush(stdout);
     cpu->screen_dirty = true;
 
-    uint32_t base = VBUFFER_BASE_I80148;
+    if (!cpu->vram) return;
+    uint32_t base = term_vram_offset(cpu);
+    uint32_t cols = cpu->term_res_x ? cpu->term_res_x : TERM_COLS_I80148;
+    uint32_t rows = cpu->term_res_y ? cpu->term_res_y : TERM_ROWS_I80148;
+    if (base + rows * cols * 2 > cpu->vram_size) return;
+
+    uint8_t attr = (uint8_t)(cpu->term_attr & 0xFF);
+
     if (c == '\n' || c == '\r') {
         cpu->term_cursor_x = 0;
         cpu->term_cursor_y++;
-        if (cpu->term_cursor_y >= TERM_ROWS_I80148) {
-            cpu->term_cursor_y = TERM_ROWS_I80148 - 1;
+        cpu->term_pos_x = 0;
+        cpu->term_pos_y++;
+        if (cpu->term_cursor_y >= rows) {
+            cpu->term_cursor_y = (uint8_t)(rows - 1);
+            cpu->term_pos_y = rows - 1;
             term_scroll(cpu);
         }
         return;
     }
     if (c == '\b') {
         if (cpu->term_cursor_x > 0) cpu->term_cursor_x--;
+        if (cpu->term_pos_x > 0) cpu->term_pos_x--;
         return;
     }
 
-    int idx = cpu->term_cursor_y * TERM_COLS_I80148 + cpu->term_cursor_x;
-    if (idx < TERM_COLS_I80148 * TERM_ROWS_I80148) {
-        cpu->mem[base + idx * 2] = (uint8_t)c;
-        cpu->mem[base + idx * 2 + 1] = cpu->term_attr;
+    uint32_t idx = cpu->term_cursor_y * cols + cpu->term_cursor_x;
+    if (idx < cols * rows) {
+        cpu->vram[base + idx * 2] = (uint8_t)c;
+        cpu->vram[base + idx * 2 + 1] = attr;
     }
     cpu->term_cursor_x++;
-    if (cpu->term_cursor_x >= TERM_COLS_I80148) {
+    cpu->term_pos_x++;
+    if (cpu->term_cursor_x >= cols) {
         cpu->term_cursor_x = 0;
         cpu->term_cursor_y++;
-        if (cpu->term_cursor_y >= TERM_ROWS_I80148) {
-            cpu->term_cursor_y = TERM_ROWS_I80148 - 1;
+        cpu->term_pos_x = 0;
+        cpu->term_pos_y++;
+        if (cpu->term_cursor_y >= rows) {
+            cpu->term_cursor_y = (uint8_t)(rows - 1);
+            cpu->term_pos_y = rows - 1;
             term_scroll(cpu);
         }
     }
@@ -989,7 +1117,17 @@ const CpuBackend g_cpu_backend_i80148 = {
     .pc_register        = REG_IC,
     .fl_register        = REG_FL,
     .sp_register        = REG_SP,
+    .term_command_addr  = TERM_COMMAND_ADDR_I80148,
+    .term_attr_addr     = TERM_ATTR_ADDR_I80148,
+    .term_res_x_addr    = TERM_RES_X_ADDR_I80148,
+    .term_res_y_addr    = TERM_RES_Y_ADDR_I80148,
+    .term_pos_x_addr    = TERM_POS_X_ADDR_I80148,
+    .term_pos_y_addr    = TERM_POS_Y_ADDR_I80148,
+    .term_buffer_addr   = TERM_BUFFER_ADDR_I80148,
     .mem_size_default   = 16 * 1024 * 1024,
+    .vram_size_default  = VRAM_SIZE_DEFAULT_I80148,
+    .vram_window_base   = VRAM_WINDOW_BASE,
+    .vram_window_size   = VRAM_WINDOW_SIZE,
     .vbuffer_base       = VBUFFER_BASE_I80148,
     .vbuffer_cols       = TERM_COLS_I80148,
     .vbuffer_rows       = TERM_ROWS_I80148,

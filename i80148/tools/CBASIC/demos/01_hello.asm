@@ -4,7 +4,7 @@
     COPY BP, SP
 
 __START:
-    LDI.DW EX1, 0
+    LDI.DW EX1, 0x01
     STR.B EX1, [0x00020019]
     LDI.DW EX1, 10
     STR.B EX1, [0x00020018]

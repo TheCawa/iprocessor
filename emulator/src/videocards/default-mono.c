@@ -83,17 +83,14 @@ static void default_mono_shutdown(void) {
 }
 
 static void default_mono_reset(Cpu* cpu) {
-    if (!cpu || !cpu->mem || !cpu->backend) return;
+    if (!cpu || !cpu->vram) return;
 
-    uint32_t base = cpu->backend->vbuffer_base;
     uint32_t size = (uint32_t)(DEFAULT_MONO_COLS * DEFAULT_MONO_ROWS * 2);
-    if (base + size > cpu->mem_size) {
-        size = (base < cpu->mem_size) ? (uint32_t)(cpu->mem_size - base) : 0;
-    }
+    if (size > cpu->vram_size) size = (uint32_t)cpu->vram_size;
     if (size > 0) {
         for (uint32_t i = 0; i < size; i += 2) {
-            cpu->mem[base + i] = ' ';
-            cpu->mem[base + i + 1] = 0x07;
+            cpu->vram[i] = ' ';
+            cpu->vram[i + 1] = 0x07;
         }
     }
 
@@ -109,23 +106,34 @@ static void default_mono_update(Cpu* cpu) {
     if (SDL_LockTexture(default_mono_texture, NULL, (void**)&pixels, &pitch) != 0) return;
 
     int stride = pitch / sizeof(uint32_t);
-    uint32_t base = cpu->backend->vbuffer_base;
+    uint32_t base = cpu->term_buffer;
     int dirty = cpu->screen_dirty;
+    bool cursor_visible = cpu->term_cursor_visible;
+    uint32_t cx = cpu->term_pos_x;
+    uint32_t cy = cpu->term_pos_y;
+    bool cursor_blink = ((SDL_GetTicks() / 500) & 1) == 0;
+
+    cpu->term_res_x = DEFAULT_MONO_COLS;
+    cpu->term_res_y = DEFAULT_MONO_ROWS;
 
     for (int y = 0; y < DEFAULT_MONO_ROWS; y++) {
         for (int x = 0; x < DEFAULT_MONO_COLS; x++) {
             int cell_idx = y * DEFAULT_MONO_COLS + x;
             uint32_t addr = base + (uint32_t)cell_idx * 2;
 
-            uint8_t ch   = (addr + 1 < cpu->mem_size) ? cpu->mem[addr]     : ' ';
-            uint8_t attr = (addr + 1 < cpu->mem_size) ? cpu->mem[addr + 1] : 0x07;
+            uint8_t ch   = (cpu->vram && addr + 1 < cpu->vram_size) ? cpu->vram[addr]     : ' ';
+            uint8_t attr = (cpu->vram && addr + 1 < cpu->vram_size) ? cpu->vram[addr + 1] : 0x07;
 
             uint32_t cell_hash = ((uint32_t)ch << 8) | attr;
-            if (!dirty && default_mono_prev_screen[cell_idx] == cell_hash) continue;
+            bool is_cursor = cursor_visible && cursor_blink && (uint32_t)x == cx && (uint32_t)y == cy;
+            if (!dirty && !is_cursor && default_mono_prev_screen[cell_idx] == cell_hash) continue;
             default_mono_prev_screen[cell_idx] = cell_hash;
 
             uint32_t fg = default_mono_get_fg(attr);
             uint32_t bg = default_mono_get_bg(attr);
+            if (is_cursor) {
+                uint32_t tmp = fg; fg = bg; bg = tmp;
+            }
 
             uint64_t glyph = font8x8[ch];
 

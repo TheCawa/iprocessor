@@ -7,9 +7,12 @@ CASM148 - Cawas Assembler for i80148
 
 Usage:
 	python CASM148.py <input.asm> [-o output.bin]
+	python CASM148.py -c [--obj-format binary|json] <input.asm> [-o output.o]
 
-	-# If -o is omitted, writes output.bin and output.hex in current directory.
-	-# The *.hex file always has the same base name as the *.bin file.
+	-# Without -c: produces flat binary (*.bin) + Logisim hex (*.hex).
+	-# With -c: produces an object file (*.o) for the linker.
+	-# --obj-format selects 'binary' (default) or 'json' object output.
+	-# If -o is omitted, writes output.bin/output.hex or output.o in current directory.
 	-# Comments start with ';' and continue to end of line.
 
 
@@ -67,10 +70,14 @@ Directives:
 	.DB ...    - Emit bytes
 	.DW ...    - Emit big-endian words
 	.DD ...    - Emit big-endian dwords
+	.ENTRY sym - Declare program entry point (object mode)
+	.GLOBAL sym - Mark a label as globally visible to the linker
+	.EXTERN sym - Declare an external symbol defined in another object
 
 	-# Segments are concatenated in the final binary as text + data + bss.
-	-# .DB accepts numbers, character constants and quoted strings with escapes:
+	-# .DB/.DW/.DD accept numbers, character constants, quoted strings and arithmetic expressions:
 	-#     \n \r \t \0 \\ 
+	-# Expressions are evaluated as signed 32-bit integers, e.g. .DW (80*25+1)*2.
 	-# Strings are NOT null-terminated unless you append , 0 manually.
 
 
@@ -244,6 +251,6 @@ Example:
 
 Known limitations:
 	-# No macro processor.
-	-# No expression evaluator in operands: use a single number/label/register.
 	-# String data only supports escape sequences listed under .DB.
 	-# CALL and JMP compute relative offsets automatically; use JMA for absolute jumps.
+	-# Object mode requires .global/.extern declarations for cross-file symbols.

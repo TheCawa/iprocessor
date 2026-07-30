@@ -49,7 +49,8 @@ main:
   CALL 		 rd_disk
   
 run_ram:
-  STR.b 	 R0, [0x00020019]	; Reset terminal
+  LDI.b 	 XL1, 0x01
+  STR.b 	 XL1, [0x00020019]	; Clear terminal (TERM_COMMAND = 0x01)
   
   ; Delay ~1 second using PIT so POST messages remain readable.
   LDI.dw   EX7, 2000

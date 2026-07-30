@@ -11,11 +11,15 @@ Memory regions:
     00020000h - 0002FFFFh - 00h - MMIO
     00030000h - 0003FFFFh - 00h - DEVICE CALLS
     00040000h - 0004FFFFh - 00h - BIOS RAM
-    00050000h - FFFFFFFFh - 00h - USER RAM
+    00050000h - 0005FFFFh - 00h - VRAM WINDOW (64 KB view into separate VRAM)
+    00060000h - FFFFFFFFh - 00h - USER RAM
     
-    00100000h - 0010FFFFh - 00h - VRAM (text/graphics frame buffer)
+    VRAM: separate video memory, size configurable (default 512 KB). The CPU sees it
+    through the VRAM WINDOW at 0x00050000..0x0005FFFF. The base offset inside VRAM is
+    selected by TERM_BUFFER (0x00020070). The video card reads the same VRAM at the
+    same TERM_BUFFER offset.
 
-	-# IMPORTANT! Regions 00030000h-0003FFFFh, 00040000h-0004FFFFh and 00050000h-FFFFFFFFh it's more like it's just formalized!
+	-# IMPORTANT! Regions 00030000h-0003FFFFh, 00040000h-0004FFFFh and 00060000h-FFFFFFFFh it's more like it's just formalized!
 	
 	BANK 0001h - Additional data
 	BANK 0002h - Additional data
@@ -48,16 +52,22 @@ I/O registers map:
 	0013h - 00020013h - R   - ERROR_CODE    - formal
 	
 U   0018h - 00020018h - W   - TERM_OUT
-U	0019h - 00020019h - W   - TERM_RESET
-	001Ah - 0002001Ah - R/W - VC_MODE       - default video card mode select
+U   0019h - 00020019h - W   - TERM_COMMAND - terminal commands (0x01=clear, 0x02=cursor on, 0x03=cursor off)
+	001Ah - 0002001Ah - R/W - VC_MODE        - default video card mode select
+	001Bh - 0002001Bh - R/W - TERM_ATTR      - 32-bit global fg/bg attribute (low 16 = fg, high 16 = bg)
 	
-	001Bh - 0002001Bh - ??? - Reserved
 	001Ch - 0002001Ch - ??? - Reserved
 	001Dh - 0002001Dh - ??? - Reserved
 	001Eh - 0002001Eh - ??? - Reserved
 	001Fh - 0002001Fh - ??? - Reserved
 	
 	0020h - 00020020h - R   - RTC_SEC
+
+	0060h - 00020060h - R   - TERM_RES_X    - 32-bit visible width (text cols or gfx pixels)
+	0064h - 00020064h - R   - TERM_RES_Y    - 32-bit visible height (text rows or gfx pixels)
+	0068h - 00020068h - R/W - TERM_POS_X    - 32-bit cursor X
+	006Ch - 0002006Ch - R/W - TERM_POS_Y    - 32-bit cursor Y
+	0070h - 00020070h - R/W - TERM_BUFFER   - 32-bit VRAM base offset for the CPU window/video card
 	0021h - 00020021h - R   - RTC_MIN
 	0022h - 00020022h - R   - RTC_HOUR
 	0023h - 00020023h - R   - RTC_DAY

@@ -1,0 +1,20 @@
+.org 0x00060000
+
+; Write directly to legacy VRAM address 0x00100000 (char + attr)
+LDI.DW A0, 'H'
+STR.DW A0, [0x00100000]
+LDI.DW A0, 0x07
+STR.DW A0, [0x00100001]
+
+LDI.DW A0, 'i'
+STR.DW A0, [0x00100002]
+LDI.DW A0, 0x07
+STR.DW A0, [0x00100003]
+
+; Also set TERM_POS_X/Y so cursor is visible
+LDI.DW A0, 2
+STR.DW A0, [0x00020068]
+LDI.DW A0, 0
+STR.DW A0, [0x0002006C]
+
+HALT

@@ -21,6 +21,126 @@
 import sys
 import re
 import ast
+import json
+import struct
+
+# -----------------------------------------------------------------------------
+# Object file format v1 (binary)
+# -----------------------------------------------------------------------------
+OBJ_MAGIC = b'CWO\x00'
+OBJ_VERSION = 1
+OBJ_ARCH_I80148 = 1
+
+OBJ_HEADER_SIZE = 64
+OBJ_SECTION_HEADER_SIZE = 32
+OBJ_SYMBOL_SIZE = 48
+OBJ_RELOC_SIZE = 48
+
+SECTION_NAME_LEN = 8
+SYMBOL_NAME_LEN = 32
+
+
+def write_object_binary(filename, obj):
+    """Write object file in compact binary format."""
+    sections = obj['sections']
+    symbols = obj.get('symbols', {})
+    relocations = obj.get('relocations', [])
+
+    section_names = list(sections.keys())
+    section_count = len(section_names)
+    symbol_count = len(symbols)
+    reloc_count = len(relocations)
+
+    # Compute offsets
+    header_offset = 0
+    section_headers_offset = header_offset + OBJ_HEADER_SIZE
+    symbols_offset = section_headers_offset + section_count * OBJ_SECTION_HEADER_SIZE
+    relocs_offset = symbols_offset + symbol_count * OBJ_SYMBOL_SIZE
+    data_offset = relocs_offset + reloc_count * OBJ_RELOC_SIZE
+
+    section_index = {name: idx for idx, name in enumerate(section_names)}
+
+    # Section data: text, data have raw bytes; bss has size but no data
+    section_data_blocks = []
+    current_data_offset = data_offset
+    section_file_offsets = {}
+    for sec_name in section_names:
+        sec = sections[sec_name]
+        if sec_name == 'bss':
+            section_file_offsets[sec_name] = 0
+            section_data_blocks.append(b'')
+        else:
+            section_file_offsets[sec_name] = current_data_offset
+            raw = bytes(sec.get('data', []))
+            section_data_blocks.append(raw)
+            current_data_offset += len(raw)
+
+    entry_symbol = (obj.get('entry') or '').encode('ascii')[:SYMBOL_NAME_LEN - 1]
+    entry_symbol = entry_symbol + b'\x00' * (SYMBOL_NAME_LEN - len(entry_symbol))
+
+    with open(filename, 'wb') as f:
+        # Header
+        f.write(OBJ_MAGIC)
+        f.write(struct.pack('>I', OBJ_VERSION))
+        f.write(struct.pack('>I', OBJ_ARCH_I80148))
+        f.write(struct.pack('>I', 0))  # flags
+        f.write(struct.pack('>I', section_count))
+        f.write(struct.pack('>I', symbol_count))
+        f.write(struct.pack('>I', reloc_count))
+        f.write(struct.pack('>I', data_offset))
+        f.write(entry_symbol)
+        # padding to 64 bytes already satisfied by entry_symbol
+
+        # Section headers
+        for sec_name in section_names:
+            sec = sections[sec_name]
+            name_bytes = sec_name.encode('ascii')[:SECTION_NAME_LEN - 1]
+            name_bytes = name_bytes + b'\x00' * (SECTION_NAME_LEN - len(name_bytes))
+            size = sec.get('size', len(sec.get('data', [])))
+            f.write(name_bytes)
+            f.write(struct.pack('>I', 0))  # type
+            f.write(struct.pack('>I', sec.get('addr') or 0))
+            f.write(struct.pack('>I', size))
+            f.write(struct.pack('>I', section_file_offsets[sec_name]))
+            f.write(struct.pack('>Q', 0))  # reserved
+
+        # Symbol table
+        symbol_names = list(symbols.keys())
+        symbol_index = {name: idx for idx, name in enumerate(symbol_names)}
+        for name in symbol_names:
+            info = symbols[name]
+            name_bytes = name.encode('ascii')[:SYMBOL_NAME_LEN - 1]
+            name_bytes = name_bytes + b'\x00' * (SYMBOL_NAME_LEN - len(name_bytes))
+            sec = info.get('section')
+            if sec is None:
+                sec_idx = 0xFFFFFFFF
+            else:
+                sec_idx = section_index.get(sec, 0xFFFFFFFF)
+            flags = 1 if info.get('global') else 0
+            f.write(name_bytes)
+            f.write(struct.pack('>I', sec_idx))
+            f.write(struct.pack('>I', info.get('offset', 0)))
+            f.write(struct.pack('>I', flags))
+            f.write(struct.pack('>I', 0))  # reserved
+
+        # Relocations
+        for reloc in relocations:
+            sec = reloc['section']
+            sec_idx = section_index.get(sec, 0xFFFFFFFF)
+            rel_type = 1 if reloc['type'] == 'rel32' else 0
+            symbol_name = reloc['symbol']
+            name_bytes = symbol_name.encode('ascii')[:SYMBOL_NAME_LEN - 1]
+            name_bytes = name_bytes + b'\x00' * (SYMBOL_NAME_LEN - len(name_bytes))
+            f.write(name_bytes)
+            f.write(struct.pack('>I', sec_idx))
+            f.write(struct.pack('>I', reloc['offset']))
+            f.write(struct.pack('>I', rel_type))
+            f.write(struct.pack('>I', reloc.get('pc_after', 0)))
+
+        # Section data
+        for block in section_data_blocks:
+            f.write(block)
+
 
 REGISTERS = {
     'R0': 0x00,
@@ -156,9 +276,17 @@ def write_logisim_hex(filename, data):
 class Assembler:
     def __init__(self):
         self.labels = {}
+        self.symbols = {}
+        self.relocations = []
         self.segments = {seg: [] for seg in SEGMENTS}
         self.active_seg = 'text'
         self.addr = 0
+        self.section_offsets = {seg: 0 for seg in SEGMENTS}
+        self.symbol_offsets = {seg: 0 for seg in SEGMENTS}
+        self.globals = set()
+        self.externs = set()
+        self.entry = None
+        self.object_mode = False
 
     def cur_addr(self):
         return self.addr
@@ -168,6 +296,8 @@ class Assembler:
 
     def add_addr(self, delta):
         self.addr += delta
+        self.section_offsets[self.active_seg] += delta
+        self.symbol_offsets[self.active_seg] += delta
 
     def append_code(self, byte):
         self.segments[self.active_seg].append(byte)
@@ -203,6 +333,29 @@ class Assembler:
             raise ValueError('unsupported node')
         return _eval(node)
 
+    def is_extern(self, s):
+        return s.strip().rstrip(',').upper() in self.externs
+
+    def is_symbol_ref(self, s):
+        name = s.strip().rstrip(',').upper()
+        return name in self.symbols or name in self.externs
+
+    @staticmethod
+    def looks_like_symbol(s):
+        s = s.strip().rstrip(',')
+        if not s:
+            return False
+        if s.startswith("'") and s.endswith("'"):
+            return False
+        if s.upper() in REGISTERS:
+            return False
+        try:
+            int(s, 0)
+            return False
+        except ValueError:
+            pass
+        return re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', s) is not None
+
     def parse_operand(self, s):
         s = s.strip().rstrip(',')
         if not s: return 0
@@ -222,6 +375,17 @@ class Assembler:
         except: pass
         try: return self.parse_number(s)
         except: return 0
+
+    def add_relocation(self, section, offset, rel_type, symbol, pc_after=None):
+        reloc = {
+            'section': section,
+            'offset': offset,
+            'type': rel_type,
+            'symbol': symbol.upper()
+        }
+        if pc_after is not None:
+            reloc['pc_after'] = pc_after
+        self.relocations.append(reloc)
 
     def parse_operands(self, s):
         operands = []
@@ -522,6 +686,11 @@ class Assembler:
             if match:
                 label = match.group(1)
                 self.labels[label.upper()] = self.cur_addr()
+                self.symbols[label.upper()] = {
+                    'section': self.active_seg,
+                    'offset': self.symbol_offsets[self.active_seg],
+                    'global': False
+                }
                 line = match.group(2).strip()
                 if not line: continue
 
@@ -547,6 +716,17 @@ class Assembler:
 
             if mnemonic == '.ORG':
                 self.set_addr(self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1]))
+                continue
+            elif mnemonic == '.ENTRY':
+                self.entry = operands[0].upper() if operands else line.split()[1].upper()
+                continue
+            elif mnemonic == '.GLOBAL':
+                name = operands[0].upper() if operands else line.split()[1].upper()
+                self.globals.add(name)
+                continue
+            elif mnemonic == '.EXTERN':
+                name = operands[0].upper() if operands else line.split()[1].upper()
+                self.externs.add(name)
                 continue
             elif mnemonic == '.DB':
                 self.add_addr(self.calc_data_size(line[3:].strip(), 1))
@@ -596,6 +776,8 @@ class Assembler:
 
             if mnemonic == '.ORG':
                 self.set_addr(self.parse_number(operands[0]) if operands else self.parse_number(line.split()[1]))
+                continue
+            elif mnemonic in ['.ENTRY', '.GLOBAL', '.EXTERN']:
                 continue
             elif mnemonic == '.DB':
                 raw_data = line[3:].strip()
@@ -647,13 +829,25 @@ class Assembler:
                 self.append_code(self.parse_operand(operands[0]) & 0xFF)
                 instr_len = 2
             elif t == 'S6':
-                target_addr = self.parse_operand(operands[0])
-                if mnemonic == 'CALL':
-                    ic_after = self.cur_addr() + 5
-                    val = target_addr - ic_after
+                op_str = operands[0].strip().rstrip(',')
+                if self.object_mode and self.is_symbol_ref(op_str):
+                    imm_offset = self.section_offsets[self.active_seg] + 1
+                    emit_imm(self.segments[self.active_seg], 0, 32)
+                    if mnemonic == 'CALL':
+                        pc_after = self.section_offsets[self.active_seg] + 5
+                        self.add_relocation(self.active_seg, imm_offset, 'rel32', op_str, pc_after)
+                    else:
+                        self.add_relocation(self.active_seg, imm_offset, 'abs32', op_str)
                 else:
-                    val = target_addr
-                emit_imm(self.segments[self.active_seg], val, 32)
+                    if self.object_mode and self.looks_like_symbol(op_str):
+                        raise ValueError(f"Undefined symbol: {op_str}")
+                    target_addr = self.parse_operand(op_str)
+                    if mnemonic == 'CALL':
+                        ic_after = self.cur_addr() + 5
+                        val = target_addr - ic_after
+                    else:
+                        val = target_addr
+                    emit_imm(self.segments[self.active_seg], val, 32)
                 instr_len = 5
             elif t == 'H0':
                 self.append_code(REGISTERS[operands[0].upper()])
@@ -673,7 +867,15 @@ class Assembler:
                 instr_len = 5
             elif t == 'A3':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 32)
+                op_str = operands[1].strip().rstrip(',')
+                if self.object_mode and self.is_symbol_ref(op_str):
+                    imm_offset = self.section_offsets[self.active_seg] + 3
+                    emit_imm(self.segments[self.active_seg], 0, 32)
+                    self.add_relocation(self.active_seg, imm_offset, 'abs32', op_str)
+                else:
+                    if self.object_mode and self.looks_like_symbol(op_str):
+                        raise ValueError(f"Undefined symbol: {op_str}")
+                    emit_imm(self.segments[self.active_seg], self.parse_operand(op_str), 32)
                 instr_len = 7
             elif t == 'D0':
                 self.append_code(REGISTERS[operands[0].upper()])
@@ -689,7 +891,15 @@ class Assembler:
                 instr_len = 5
             elif t == 'D1DW':
                 self.append_code(REGISTERS[operands[0].upper()])
-                emit_imm(self.segments[self.active_seg], self.parse_operand(operands[1]), 32)
+                op_str = operands[1].strip().rstrip(',')
+                if self.object_mode and self.is_symbol_ref(op_str):
+                    imm_offset = self.section_offsets[self.active_seg] + 3
+                    emit_imm(self.segments[self.active_seg], 0, 32)
+                    self.add_relocation(self.active_seg, imm_offset, 'abs32', op_str)
+                else:
+                    if self.object_mode and self.looks_like_symbol(op_str):
+                        raise ValueError(f"Undefined symbol: {op_str}")
+                    emit_imm(self.segments[self.active_seg], self.parse_operand(op_str), 32)
                 instr_len = 7
             elif t == 'J0':
                 c = cond if cond is not None else 0x00
@@ -697,15 +907,27 @@ class Assembler:
                 if c == 0x00 and len(operands) > 1:
                     c = CONDS.get(operands[0].upper(), 0x00)
                     imm_str = operands[1]
+                imm_str = imm_str.strip().rstrip(',')
                 self.append_code(c)
 
-                target_addr = self.parse_operand(imm_str)
-                if mnemonic == 'JMP':
-                    ic_after = self.cur_addr() + 6
-                    val = target_addr - ic_after
+                if self.object_mode and self.is_symbol_ref(imm_str):
+                    imm_offset = self.section_offsets[self.active_seg] + 2
+                    emit_imm(self.segments[self.active_seg], 0, 32)
+                    if mnemonic == 'JMP':
+                        pc_after = self.section_offsets[self.active_seg] + 6
+                        self.add_relocation(self.active_seg, imm_offset, 'rel32', imm_str, pc_after)
+                    else:
+                        self.add_relocation(self.active_seg, imm_offset, 'abs32', imm_str)
                 else:
-                    val = target_addr
-                emit_imm(self.segments[self.active_seg], val, 32)
+                    if self.object_mode and self.looks_like_symbol(imm_str):
+                        raise ValueError(f"Undefined symbol: {imm_str}")
+                    target_addr = self.parse_operand(imm_str)
+                    if mnemonic == 'JMP':
+                        ic_after = self.cur_addr() + 6
+                        val = target_addr - ic_after
+                    else:
+                        val = target_addr
+                    emit_imm(self.segments[self.active_seg], val, 32)
                 instr_len = 6
             elif t == 'J1':
                 c = cond if cond is not None else 0x00
@@ -729,45 +951,155 @@ class Assembler:
                 sf_offset = {'F':0, 'S':1, 'R':2, 'SD':3, 'RD':4}[mode]
                 self.segments[self.active_seg][-1] += sf_offset
                 self.append_code(REGISTERS[operands[0].upper()])
-                data = self.parse_mem_data(operands[1], mode)
-                self.extend_code(data)
+
+                if mode == 'F':
+                    inner = operands[1].strip()[1:-1].strip()
+                    if self.object_mode and self.is_symbol_ref(inner):
+                        imm_offset = self.section_offsets[self.active_seg] + 2
+                        emit_imm(self.segments[self.active_seg], 0, 32)
+                        self.add_relocation(self.active_seg, imm_offset, 'abs32', inner)
+                    else:
+                        if self.object_mode and self.looks_like_symbol(inner):
+                            raise ValueError(f"Undefined symbol: {inner}")
+                        data = self.parse_mem_data(operands[1], mode)
+                        self.extend_code(data)
+                else:
+                    data = self.parse_mem_data(operands[1], mode)
+                    self.extend_code(data)
                 instr_len = l
 
             self.add_addr(instr_len)
+
+    def compile(self, source):
+        lines = source.splitlines()
+        self.first_pass(lines)
+
+        for name in self.globals:
+            if name in self.symbols:
+                self.symbols[name]['global'] = True
+            else:
+                raise ValueError(f".global symbol not defined: {name}")
+
+        for name in self.externs:
+            self.symbols[name] = {
+                'section': None,
+                'offset': 0,
+                'global': False,
+                'undefined': True
+            }
+
+        if self.entry is not None and self.entry not in self.labels:
+            raise ValueError(f".entry symbol not defined: {self.entry}")
+
+        self.addr = 0
+        self.active_seg = 'text'
+        self.section_offsets = {seg: 0 for seg in SEGMENTS}
+        self.symbol_offsets = {seg: 0 for seg in SEGMENTS}
+        self.object_mode = True
+        self.second_pass(lines)
+        obj = {
+            'arch': 'i80148',
+            'entry': self.entry,
+            'sections': {
+                'text': {'addr': None, 'data': self.segments['text']},
+                'data': {'addr': None, 'data': self.segments['data']},
+                'bss': {'addr': None, 'size': len(self.segments['bss']), 'data': []}
+            },
+            'symbols': self.symbols,
+            'relocations': self.relocations
+        }
+        return obj
+
+    @staticmethod
+    def write_object(filename, obj, obj_format='binary'):
+        if obj_format == 'binary':
+            write_object_binary(filename, obj)
+        else:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(obj, f, indent=2)
 
     def assemble(self, source):
         lines = source.splitlines()
         self.first_pass(lines)
         self.addr = 0
         self.active_seg = 'text'
+        self.section_offsets = {seg: 0 for seg in SEGMENTS}
+        self.symbol_offsets = {seg: 0 for seg in SEGMENTS}
+        self.object_mode = False
         self.second_pass(lines)
         final = self.segments['text'] + self.segments['data'] + self.segments['bss']
         return final
 
+def parse_args(args):
+    compile_only = False
+    out_file = None
+    input_file = None
+    obj_format = 'binary'
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == '-c':
+            compile_only = True
+            i += 1
+        elif arg == '--obj-format':
+            if i + 1 >= len(args):
+                raise ValueError("Missing argument for --obj-format")
+            obj_format = args[i + 1].lower()
+            if obj_format not in ('binary', 'json'):
+                raise ValueError("--obj-format must be 'binary' or 'json'")
+            i += 2
+        elif arg == '-o':
+            if i + 1 >= len(args):
+                raise ValueError("Missing argument for -o")
+            out_file = args[i + 1]
+            i += 2
+        elif arg.startswith('-'):
+            raise ValueError(f"Unknown option: {arg}")
+        else:
+            if input_file is not None:
+                raise ValueError("Multiple input files not supported")
+            input_file = arg
+            i += 1
+    if input_file is None:
+        raise ValueError("No input file specified")
+    if out_file is None:
+        out_file = 'output.o' if compile_only else 'output.bin'
+    return compile_only, input_file, out_file, obj_format
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python assembler.py <input.asm> [-o output.bin]")
+    try:
+        compile_only, input_file, out_file, obj_format = parse_args(sys.argv[1:])
+    except ValueError as e:
+        print(f"Usage: python CASM148.py [-c] [--obj-format binary|json] <input.asm> [-o output.{'o' if '-c' in sys.argv else 'bin'}]")
+        print(f"Error: {e}")
         sys.exit(1)
 
-    with open(sys.argv[1], 'r', encoding='utf-8') as f:
-        source = f.read()
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            source = f.read()
 
-    asm = Assembler()
-    code = asm.assemble(source)
+        asm = Assembler()
 
-    out_file = 'output.bin'
-    if '-o' in sys.argv:
-        out_file = sys.argv[sys.argv.index('-o') + 1]
-
-    with open(out_file, 'wb') as f:
-        f.write(bytes(code))
-
-    hex_file = out_file.rsplit('.', 1)[0] + '.hex'
-    write_logisim_hex(hex_file, code)
-
-    print(f"{len(code)} bytes collected. Labels: {asm.labels}")
-    print(f"Segments: text={len(asm.segments['text'])}, data={len(asm.segments['data'])}, bss={len(asm.segments['bss'])}")
-    print(f"Written: {out_file} and {hex_file}")
+        if compile_only:
+            obj = asm.compile(source)
+            Assembler.write_object(out_file, obj, obj_format)
+            print(f"{len(obj['sections']['text']['data'])} bytes text, "
+                  f"{len(obj['sections']['data']['data'])} bytes data, "
+                  f"{obj['sections']['bss']['size']} bytes bss")
+            print(f"Labels: {list(obj['symbols'].keys())}")
+            print(f"Written: {out_file} ({obj_format})")
+        else:
+            code = asm.assemble(source)
+            with open(out_file, 'wb') as f:
+                f.write(bytes(code))
+            hex_file = out_file.rsplit('.', 1)[0] + '.hex'
+            write_logisim_hex(hex_file, code)
+            print(f"{len(code)} bytes collected. Labels: {asm.labels}")
+            print(f"Segments: text={len(asm.segments['text'])}, data={len(asm.segments['data'])}, bss={len(asm.segments['bss'])}")
+            print(f"Written: {out_file} and {hex_file}")
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

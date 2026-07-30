@@ -22,6 +22,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
+size_t cpu_parse_size(const char* s) {
+    if (!s || !*s) return 0;
+    char* end = NULL;
+    double val = strtod(s, &end);
+    if (end == s) return 0;
+    size_t mult = 1;
+    if (*end) {
+        char c = (char)tolower((unsigned char)*end);
+        if (c == 'k') mult = 1024;
+        else if (c == 'm') mult = 1024 * 1024;
+        else if (c == 'g') mult = 1024ULL * 1024ULL * 1024ULL;
+    }
+    return (size_t)(val * (double)mult);
+}
 
 #define MAX_BACKENDS 16
 static const CpuBackend* g_backends[MAX_BACKENDS];
@@ -58,10 +74,12 @@ const CpuBackend* cpu_backend_at(int idx) {
     return g_backends[idx];
 }
 
-void cpu_init(Cpu* cpu, const CpuBackend* backend, uint8_t* mem, size_t mem_size) {
+void cpu_init(Cpu* cpu, const CpuBackend* backend, uint8_t* mem, size_t mem_size, uint8_t* vram, size_t vram_size) {
     memset(cpu, 0, sizeof(Cpu));
     cpu->mem = mem;
     cpu->mem_size = mem_size;
+    cpu->vram = vram;
+    cpu->vram_size = vram_size;
     cpu->backend = backend;
     if (backend && backend->state_size > 0) {
         cpu->backend_data = calloc(1, backend->state_size);

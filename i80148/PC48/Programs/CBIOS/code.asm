@@ -154,7 +154,8 @@ cbios_delay:
     CMP.DW EX7, 1000
     JMP.GR cbios_delay
 
-    STR.B R0, [0x00020019]
+    LDI.B XL1, 0x01
+    STR.B XL1, [0x00020019]
     JMA 0x00060000
 
 disk_read_error:

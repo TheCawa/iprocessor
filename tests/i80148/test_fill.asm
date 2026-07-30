@@ -10,8 +10,8 @@ start:
     LDI.DW EX1, 64000
 
 fill_loop:
-    LDI.B XL1, 0x55
-    STR.B XL1, [A0]
+    LDI.B XL2, 0x55
+    STR.B XL2, [A0]
     INC A0
     DEC EX1
     JMP.NZ fill_loop

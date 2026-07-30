@@ -96,8 +96,20 @@ typedef struct CpuBackend {
     uint8_t fl_register;                    // flags register index
     uint8_t sp_register;                    // stack pointer register index
 
+    // Terminal / video MMIO register addresses (0 = not supported by backend)
+    uint32_t term_command_addr;
+    uint32_t term_attr_addr;
+    uint32_t term_res_x_addr;
+    uint32_t term_res_y_addr;
+    uint32_t term_pos_x_addr;
+    uint32_t term_pos_y_addr;
+    uint32_t term_buffer_addr;
+
     // System parameters
     uint32_t mem_size_default;
+    uint32_t vram_size_default;
+    uint32_t vram_window_base;
+    uint32_t vram_window_size;
     uint32_t vbuffer_base;
     uint16_t vbuffer_cols;
     uint16_t vbuffer_rows;
@@ -111,16 +123,25 @@ struct Cpu {
     uint8_t* mem;
     size_t   mem_size;
 
+    uint8_t* vram;
+    size_t   vram_size;
+
     bool halted;
     bool irq_enabled;
     bool screen_dirty;
     bool gui_mode;
     bool term_needs_newline;
 
-    // Terminal text buffer state (used by i80148-style text-mode cards)
-    uint8_t term_cursor_x;
-    uint8_t term_cursor_y;
-    uint8_t term_attr;
+    // Terminal / video state
+    uint32_t term_buffer;        // VRAM base offset used by video hardware
+    uint32_t term_attr;          // fg (low 16 bits) / bg (high 16 bits)
+    uint32_t term_res_x;         // visible width (text cols or gfx pixels)
+    uint32_t term_res_y;         // visible height (text rows or gfx pixels)
+    uint32_t term_pos_x;         // cursor X
+    uint32_t term_pos_y;         // cursor Y
+    uint8_t  term_cursor_x;      // legacy 8-bit cursor position
+    uint8_t  term_cursor_y;
+    bool     term_cursor_visible;
 
     // Keyboard input state
     char kbd_buffer[256];
@@ -156,8 +177,11 @@ int cpu_backend_count(void);
 const CpuBackend* cpu_backend_at(int idx);
 
 // Generic CPU lifecycle
-void cpu_init(Cpu* cpu, const CpuBackend* backend, uint8_t* mem, size_t mem_size);
+void cpu_init(Cpu* cpu, const CpuBackend* backend, uint8_t* mem, size_t mem_size, uint8_t* vram, size_t vram_size);
 void cpu_reset(Cpu* cpu);
+
+// Parse human-readable size string like "16M", "512K", "1G".
+size_t cpu_parse_size(const char* s);
 int  cpu_step(Cpu* cpu);
 int  cpu_load_file(Cpu* cpu, const char* filename, uint32_t load_addr);
 

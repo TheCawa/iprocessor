@@ -8,16 +8,19 @@
 bool emulator_init(SDL_Window** out_window, SDL_Renderer** out_renderer, const VideoCard* vc);
 
 // Main rendering loop (screen + registers + menu)
-void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& memory);
+void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& memory, std::vector<uint8_t>& vram);
 
-// Switch the active CPU backend and resize/reinit memory.
-bool emulator_switch_cpu(Cpu* cpu, const CpuBackend* new_backend, std::vector<uint8_t>& memory);
+// Switch the active CPU backend and resize/reinit memory/VRAM.
+bool emulator_switch_cpu(Cpu* cpu, const CpuBackend* new_backend, std::vector<uint8_t>& memory, std::vector<uint8_t>& vram);
 
 // Switch the active video card (reinitializes renderer resources).
 bool emulator_switch_vc(Cpu* cpu, const VideoCard* new_vc, SDL_Renderer* renderer);
 
 // Handle system events and ImGui events
 bool emulator_handle_events(Cpu* cpu);
+
+// Set desired RAM/VRAM sizes (used by Reset CPU / CPU switch).
+void emulator_set_desired_ram_vram(size_t ram_kb, size_t vram_kb);
 
 // CPU speed modes.
 typedef enum {

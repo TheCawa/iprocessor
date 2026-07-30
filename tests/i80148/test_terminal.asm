@@ -4,9 +4,9 @@
 .text
 
 start:
-    ; Очищаем экран.
-    LDI.B XL1, 0
-    STR.B XL1, [0x0002001E]
+    ; Очищаем экран (TERM_COMMAND = 0x01).
+    LDI.B XL1, 0x01
+    STR.B XL1, [0x00020019]
 
     ; Приглашение.
     LDI.DW IX, prompt

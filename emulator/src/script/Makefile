@@ -9,9 +9,9 @@ SRC_DIR_CPU     = $(SRC_DIR)/cpu
 SRC_DIR_SYSTEM  = $(SRC_DIR)/system
 SRC_DIR_VC      = $(SRC_DIR)/videocards
 SRC_DIR_EMU     = $(SRC_DIR)/emulator
-BUILD_DIR       = ..\..\build
-DIST_DIR        = ..\..\dist
-DLL_DIR         = ..\..\dll
+BUILD_DIR       = ../../build
+DIST_DIR        = ../../dist
+DLL_DIR         = ../../dll
 
 CC      = gcc
 CXX     = g++
@@ -20,7 +20,7 @@ CXXFLAGS= -Wall -Wextra -std=c++17 -I$(SRC_DIR)/include -I"$(SDL_INC_PATH)"
 LDFLAGS = -L"$(SDL_LIB_PATH)" -lmingw32 -lSDL2main -lSDL2 -lcomdlg32
 
 TARGET_NAME = emulator.exe
-TARGET      = $(DIST_DIR)\$(TARGET_NAME)
+TARGET      = $(DIST_DIR)/$(TARGET_NAME)
 
 # C sources: system, videocards, CPU backends
 C_SOURCES   = $(wildcard $(SRC_DIR_SYSTEM)/*.c)
@@ -36,8 +36,8 @@ C_OBJECTS       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(C_SOURCES))
 GUI_OBJECTS     = $(patsubst $(SRC_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(GUI_CPP_SOURCES))
 CONSOLE_OBJECTS = $(patsubst $(SRC_DIR_EMU)/%.cpp, $(BUILD_DIR)/console_%.o, $(notdir $(CONSOLE_CPP_SOURCES)))
 
-SDL_DLL_SRC = $(DLL_DIR)\SDL2.dll
-SDL_DLL_DST = $(DIST_DIR)\SDL2.dll
+SDL_DLL_SRC = $(DLL_DIR)/SDL2.dll
+SDL_DLL_DST = $(DIST_DIR)/SDL2.dll
 
 .PHONY: all clean run console
 

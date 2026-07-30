@@ -65,11 +65,12 @@ static std::string resolve_bios_path(const char* user_path) {
 }
 
 static void print_usage(const char* prog) {
-    std::cerr << "Usage: " << prog << " [--cpu <name>] [--bios <path>] <file> [load_addr] [disk_image]\n";
+    std::cerr << "Usage: " << prog << " [--cpu <name>] [--bios <path>] [--ram <size>] [--vram <size>] <file> [load_addr] [disk_image]\n";
     std::cerr << "\nExamples:\n";
     std::cerr << "  " << prog << " --cpu i80148 program.bin 0x00060000 disk.bin\n";
     std::cerr << "  " << prog << " --cpu i8046  program.bin 0x0000\n";
     std::cerr << "  " << prog << " --bios ../i80148/PC48/Programs/CBIOS/CBIOS.bin program.bin\n";
+    std::cerr << "  " << prog << " --ram 16M --vram 1M program.bin\n";
 }
 
 static void print_registers(const CpuBackend* backend, Cpu* cpu) {
@@ -100,9 +101,25 @@ int main(int argc, char* argv[]) {
     bool load_addr_set = false;
     const char* disk_image = nullptr;
     const char* bios_path = nullptr;
+    const char* ram_size_str = nullptr;
+    const char* vram_size_str = nullptr;
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--cpu") == 0) {
+        if (strcmp(argv[i], "--ram") == 0) {
+            if (i + 1 < argc) {
+                ram_size_str = argv[++i];
+            } else {
+                std::cerr << "[ERROR] --ram requires a size (e.g. 16M, 512K)\n";
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--vram") == 0) {
+            if (i + 1 < argc) {
+                vram_size_str = argv[++i];
+            } else {
+                std::cerr << "[ERROR] --vram requires a size (e.g. 512K, 1M)\n";
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--cpu") == 0) {
             if (i + 1 < argc) {
                 cpu_name = argv[++i];
             } else {
@@ -138,10 +155,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    size_t ram_size = backend->mem_size_default;
+    size_t ram_size = ram_size_str ? cpu_parse_size(ram_size_str) : backend->mem_size_default;
+    if (ram_size == 0) ram_size = backend->mem_size_default;
+    size_t vram_size = vram_size_str ? cpu_parse_size(vram_size_str) : backend->vram_size_default;
+    if (vram_size == 0) vram_size = backend->vram_size_default;
+
     std::vector<uint8_t> memory(ram_size, 0);
+    std::vector<uint8_t> vram(vram_size, 0);
     Cpu cpu;
-    cpu_init(&cpu, backend, memory.data(), ram_size);
+    cpu_init(&cpu, backend, memory.data(), ram_size, vram.data(), vram_size);
     pit_init(&cpu);
 
     if (disk_image) {

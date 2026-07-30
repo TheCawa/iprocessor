@@ -1,0 +1,73 @@
+DISCASM148 - Cawas Disassembler for i80148
+
+	-# Version: 0.1
+	-# Target: i80148 (32-bit flat architecture)
+	-# Output: CASM148 assembly (*.asm)
+	-# Byte order: BIG ENDIAN
+
+Usage:
+	python DISCASM148.py <input.bin|input.hex> [--org <addr>] [-o output.asm]
+
+	-# Without -o the result is printed to stdout.
+	-# --org sets the base address for generated labels (default 0x00000000).
+
+
+Input formats:
+	#Format - #Description
+	*.bin   - Raw flat binary
+	*.hex   - Logisim 'v2.0 raw' hex file
+
+	-# Hex files may use '*' run-length encoding, e.g. "16*00".
+
+
+Disassembly strategy:
+	-# Linear sweep from the start of the file.
+	-# Valid instructions are decoded and emitted as CASM148 mnemonics.
+	-# Data-like regions are emitted as .db directives.
+	-# Jump/call targets are collected during pass 1 and emitted as labels.
+
+
+Heuristics:
+	#Heuristic        - #Description
+	Zero run >= 16    - Emit as a zero-filled .db block
+	ASCII run >= 4    - Emit as a quoted .db string
+	Valid instruction - Decode and emit as mnemonic
+	Invalid byte      - Emit as a single .db 0xXX
+	Overlap detected  - Merge conflicting instruction/data into raw bytes
+
+	-# ASCII strings are emitted with a trailing ", 0" if a null terminator follows.
+	-# If an instruction overlaps a string/zero block, both are merged into raw .db bytes.
+
+
+Output conventions:
+	#Convention - #Description
+	Labels      - L_xxxxxxxx (absolute address in uppercase hex)
+	Strings     - .db "..." with escapes \n \r \t \0 \\ \"
+	Zeros       - .db 0x00, ... in chunks of 8 bytes
+	Raw bytes   - .db 0xXX, ... in chunks of 8 bytes
+
+	-# The output always begins with .text.
+	-# Disassembly is best-effort; hand review is recommended for data tables.
+
+
+Example:
+	$ python DISCASM148.py program.hex --org 0x00050000 -o program.asm
+	Loaded 256 bytes from program.hex
+	Written: program.asm
+	Labels found: 4
+
+Example output snippet:
+	.text
+
+	L_00050010:
+		LDI.DW SP, 0x00080000
+		LDI.DW IX, L_00050040
+		CALL L_00050020
+		HALT
+
+
+Known limitations:
+	-# Cannot distinguish code from data perfectly.
+	-# Does not recover original label names.
+	-# Self-modifying code and jump tables may be misidentified.
+	-# Conditional JMA is emitted as an absolute address, not a label.

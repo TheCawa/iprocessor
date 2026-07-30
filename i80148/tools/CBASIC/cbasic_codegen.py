@@ -59,10 +59,11 @@ class CodeGenerator:
         self.asm.append("")
         self.asm.append("__START:")
         
-        # Инициализация терминала (оставляем, это хорошая практика)
+        # Инициализация терминала: очистка экрана (TERM_COMMAND = 0x01)
+        # и пара переводов строки через TERM_OUT (0x00020018).
         # ВАЖНО: XLn - алиас младшего байта EXn, поэтому байты пишем
         # напрямую из dword-регистров (STR.B берёт младший байт регистра).
-        self.emit("LDI.DW EX1, 0")
+        self.emit("LDI.DW EX1, 0x01")
         self.emit("STR.B EX1, [0x00020019]")
         self.emit("LDI.DW EX1, 10")
         self.emit("STR.B EX1, [0x00020018]")
