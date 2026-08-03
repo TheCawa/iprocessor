@@ -166,6 +166,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "[ERROR] Failed to initialize graphics subsystem!\n";
         return 1;
     }
+    cpu.update_term_res = (vc && vc->update_term_res) ? vc->update_term_res : NULL;
 
     std::cout << "=== Iprocessor Emulator Started ===\n";
     std::cout << "CPU: " << backend->description << "\n";

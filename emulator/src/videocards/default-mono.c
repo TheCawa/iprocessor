@@ -82,6 +82,12 @@ static void default_mono_shutdown(void) {
     default_mono_initialized = 0;
 }
 
+static void default_mono_update_term_res(Cpu* cpu) {
+    if (!cpu) return;
+    cpu->term_res_x = DEFAULT_MONO_COLS;
+    cpu->term_res_y = DEFAULT_MONO_ROWS;
+}
+
 static void default_mono_reset(Cpu* cpu) {
     if (!cpu || !cpu->vram) return;
 
@@ -174,6 +180,7 @@ const VideoCard g_videocard_default_mono = {
     .init        = default_mono_init,
     .shutdown    = default_mono_shutdown,
     .reset       = default_mono_reset,
+    .update_term_res = default_mono_update_term_res,
     .update      = default_mono_update,
     .get_texture = default_mono_get_texture,
     .get_display_width  = default_mono_get_display_width,

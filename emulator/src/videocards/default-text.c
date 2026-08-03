@@ -72,6 +72,12 @@ static void default_text_shutdown(void) {
     default_text_initialized = 0;
 }
 
+static void default_text_update_term_res(Cpu* cpu) {
+    if (!cpu) return;
+    cpu->term_res_x = DEFAULT_COLS;
+    cpu->term_res_y = DEFAULT_ROWS;
+}
+
 static void default_text_reset(Cpu* cpu) {
     if (!cpu || !cpu->vram) return;
 
@@ -164,6 +170,7 @@ const VideoCard g_videocard_default_text = {
     .init        = default_text_init,
     .shutdown    = default_text_shutdown,
     .reset       = default_text_reset,
+    .update_term_res = default_text_update_term_res,
     .update      = default_text_update,
     .get_texture = default_text_get_texture,
     .get_display_width  = default_text_get_display_width,

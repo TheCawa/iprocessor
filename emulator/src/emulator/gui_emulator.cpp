@@ -168,6 +168,7 @@ static void emulator_reset_cpu(Cpu* cpu, std::vector<uint8_t>& memory, std::vect
     if (g_vc && g_vc->reset) {
         g_vc->reset(cpu);
     }
+    cpu->update_term_res = (g_vc && g_vc->update_term_res) ? g_vc->update_term_res : NULL;
     // Clear RAM above the BIOS/CMOS reserved region (0x00020000..end).
     const uint32_t ram_start = 0x00020000;
     if (ram_start < cpu->mem_size) {
@@ -284,6 +285,7 @@ bool emulator_switch_vc(Cpu* cpu, const VideoCard* new_vc, SDL_Renderer* rendere
         return false;
     }
     cpu->screen_dirty = true;
+    cpu->update_term_res = (g_vc && g_vc->update_term_res) ? g_vc->update_term_res : NULL;
     if (g_window) {
         char title[512];
         snprintf(title, sizeof(title), "%s - %s", g_current_backend ? g_current_backend->name : "cpu", g_vc->name);

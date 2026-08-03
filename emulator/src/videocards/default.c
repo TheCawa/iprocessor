@@ -37,6 +37,7 @@
 
 #include "videocard.h"
 #include "font8x8.h"
+#include "term_res.h"
 #include <string.h>
 
 #define DEFAULT_MODE_ADDR   0x0002001A
@@ -192,6 +193,10 @@ static uint8_t default_get_mode_id(Cpu* cpu) {
 
 static inline uint32_t default_vram_base(Cpu* cpu) {
     return cpu ? cpu->term_buffer : 0;
+}
+
+static void default_update_term_res(Cpu* cpu) {
+    term_res_update(cpu);
 }
 
 static void default_reset(Cpu* cpu) {
@@ -371,6 +376,7 @@ const VideoCard g_videocard_default = {
     .init        = default_init,
     .shutdown    = default_shutdown,
     .reset       = default_reset,
+    .update_term_res = default_update_term_res,
     .update      = default_update,
     .get_texture = default_get_texture,
     .get_display_width  = default_get_display_width,

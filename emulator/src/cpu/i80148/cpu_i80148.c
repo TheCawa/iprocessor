@@ -182,9 +182,11 @@ uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
         return cpu->term_attr;
     }
     if (mode == MODE_DWORD && addr == TERM_RES_X_ADDR_I80148) {
+        if (cpu->update_term_res) cpu->update_term_res(cpu);
         return cpu->term_res_x;
     }
     if (mode == MODE_DWORD && addr == TERM_RES_Y_ADDR_I80148) {
+        if (cpu->update_term_res) cpu->update_term_res(cpu);
         return cpu->term_res_y;
     }
     if (mode == MODE_DWORD && addr == TERM_POS_X_ADDR_I80148) {
@@ -308,13 +310,17 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
         return;
     }
     if (addr == TERM_POS_X_ADDR_I80148) {
+        uint32_t cols = cpu->term_res_x ? cpu->term_res_x : TERM_COLS_I80148;
         cpu->term_pos_x = (uint32_t)(val & 0xFFFFFFFF);
+        if (cols > 0 && cpu->term_pos_x >= cols) cpu->term_pos_x = cols - 1;
         cpu->term_cursor_x = (uint8_t)(cpu->term_pos_x & 0xFF);
         cpu->screen_dirty = true;
         return;
     }
     if (addr == TERM_POS_Y_ADDR_I80148) {
+        uint32_t rows = cpu->term_res_y ? cpu->term_res_y : TERM_ROWS_I80148;
         cpu->term_pos_y = (uint32_t)(val & 0xFFFFFFFF);
+        if (rows > 0 && cpu->term_pos_y >= rows) cpu->term_pos_y = rows - 1;
         cpu->term_cursor_y = (uint8_t)(cpu->term_pos_y & 0xFF);
         cpu->screen_dirty = true;
         return;
@@ -328,6 +334,7 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
         if (addr < cpu->mem_size) {
             cpu->mem[addr] = (uint8_t)(val & 0xFF);
             cpu->screen_dirty = true;
+            if (cpu->update_term_res) cpu->update_term_res(cpu);
         }
         return;
     }

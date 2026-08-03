@@ -47,6 +47,10 @@ typedef struct VideoCard {
     // Optional: may be NULL.
     void (*reset)(Cpu* cpu);
 
+    // Synchronously update cpu->term_res_x/y from the current VC_MODE.
+    // Optional: may be NULL.
+    void (*update_term_res)(Cpu* cpu);
+
     // Re-render the texture from CPU video memory if needed.
     void (*update)(Cpu* cpu);
 

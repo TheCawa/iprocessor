@@ -30,6 +30,7 @@
 #include <SDL.h>
 #include "backends.h"
 #include "pit.h"
+#include "term_res.h"
 
 static std::string get_exe_dir() {
     char buf[MAX_PATH];
@@ -165,6 +166,7 @@ int main(int argc, char* argv[]) {
     std::vector<uint8_t> vram(vram_size, 0);
     Cpu cpu;
     cpu_init(&cpu, backend, memory.data(), ram_size, vram.data(), vram_size);
+    cpu.update_term_res = term_res_update;
     pit_init(&cpu);
 
     if (disk_image) {

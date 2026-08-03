@@ -164,6 +164,9 @@ struct Cpu {
     // Device class enumeration state.
     int devclass_selected;
 
+    // Optional video-card callback: update term_res_x/y from the current VC_MODE.
+    void (*update_term_res)(Cpu* cpu);
+
     const CpuBackend* backend;
     void*             backend_data;   // backend-specific state (malloc'd)
     void*             pit_data;       // PIT state (malloc'd)
