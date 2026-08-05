@@ -23,8 +23,8 @@
 #include "rtc.h"
 #include "pit.h"
 #include "input.h"
-#include "devclass.h"
 #include <stdio.h>
+#include "devclass.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -49,6 +49,7 @@ void cpu_init_i80148(Cpu* cpu) {
     cpu->term_cursor_x = 0;
     cpu->term_cursor_y = 0;
     cpu->term_cursor_visible = true;
+    cpu->term_scroll_enabled = true;
     cpu->irq_enabled = false;
     cpu->halted = false;
     cpu->screen_dirty = true;
@@ -73,6 +74,7 @@ void cpu_reset_i80148(Cpu* cpu) {
     cpu->term_cursor_x = 0;
     cpu->term_cursor_y = 0;
     cpu->term_cursor_visible = true;
+    cpu->term_scroll_enabled = true;
     input_reset(cpu);
     pit_reset_pending(cpu);
     term_clear(cpu);
@@ -302,6 +304,10 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
         } else if (cmd == 0x03) {
             cpu->term_cursor_visible = false;
             cpu->screen_dirty = true;
+        } else if (cmd == 0x04) {
+            cpu->term_scroll_enabled = true;
+        } else if (cmd == 0x05) {
+            cpu->term_scroll_enabled = false;
         }
         return;
     }
@@ -443,7 +449,9 @@ static void term_putchar(Cpu* cpu, char c) {
         if (cpu->term_cursor_y >= rows) {
             cpu->term_cursor_y = (uint8_t)(rows - 1);
             cpu->term_pos_y = rows - 1;
-            term_scroll(cpu);
+            if (cpu->term_scroll_enabled) {
+                term_scroll(cpu);
+            }
         }
         return;
     }
@@ -468,7 +476,9 @@ static void term_putchar(Cpu* cpu, char c) {
         if (cpu->term_cursor_y >= rows) {
             cpu->term_cursor_y = (uint8_t)(rows - 1);
             cpu->term_pos_y = rows - 1;
-            term_scroll(cpu);
+            if (cpu->term_scroll_enabled) {
+                term_scroll(cpu);
+            }
         }
     }
 }

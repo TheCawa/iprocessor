@@ -1,0 +1,242 @@
+Y - C-like language compiler for i80148
+
+	-# Version: 0.8.1
+	-# Target: i80148 (32-bit flat big-endian architecture)
+	-# Output: flat binary (*.bin) + intermediate assembly (*.asm)
+	-#         object files (*.o) in -c mode
+	-# Backend: generates CASM148 assembly, then assembles with CASM148.py
+	-#          object mode uses LINK148.py for linking
+
+Usage:
+	python i80148/tools/Y/ycc.py <input.y> [-o output.bin]
+	python i80148/tools/Y/ycc.py -c <input.y> [-o output.o]
+	python i80148/tools/Y/ycc.py -S <input.y> [-o output.asm]
+	python i80148/tools/Y/ycc.py <main.y> <helper.y> ... [-o output.bin]
+
+	-# Without -c: produces flat binary (*.bin) + intermediate assembly (*.asm).
+	-# Runtime library (stdlib/runtime.asm) is embedded automatically.
+	-# With -c: produces an object file (*.o) for the linker.
+	-# With multiple sources and no -c: compiles each .y to .o, then links with
+	-#   crt0_y.o and runtime.o automatically via LINK148.py.
+	-# With -S: emits assembly and stops (single source only).
+	-# Comments follow C syntax: // to end of line, or /* ... */.
+	-# Source code is case-sensitive.
+
+	-# Example flat build:
+	#     python i80148/tools/Y/ycc.py program.y -o program.bin
+	#     emulator/dist/console_emu.exe program.bin 0x00060000
+
+	-# Example multi-source build (ycc links automatically):
+	#     python i80148/tools/Y/ycc.py main.y helper.y -o program.bin
+	#     emulator/dist/console_emu.exe program.bin 0x00060000
+
+	-# Example manual object-mode build:
+	#     python i80148/tools/Y/ycc.py -c main.y -o main.o
+	#     python i80148/tools/CASM/CASM148.py -c helper.asm -o helper.o
+	#     python i80148/tools/LINK/LINK148.py \
+	#         i80148/tools/Y/stdlib/crt0_y.o \
+	#         i80148/tools/Y/stdlib/runtime.o \
+	#         main.o helper.o \
+	#         -o program.bin --base 0x00060000 --entry _start
+	#     emulator/dist/console_emu.exe program.bin 0x00060000
+
+
+Pipeline:
+	#Stage            - #File
+	Preprocessor     - preprocessor.py  (#include, #define, #ifdef/#ifndef/#else/#endif)
+	Lexer            - lexer.py         (tokens)
+	Parser           - parser.py        (recursive descent)
+	Semantic check   - semantic.py      (symbol table, type checking)
+	Code generator   - codegen.py       (emits i80148 assembly)
+	Assembler        - CASM148.py       (produces .bin/.hex or .o)
+	Linker (object)  - LINK148.py       (links .o files into .bin)
+
+
+Data types:
+	#Type              - #Size - #Notes
+	char               - 1     - Unsigned by default
+	unsigned char      - 1     - Unsigned 8-bit
+	signed char        - 1     - Signed 8-bit
+	short              - 2     - Signed 16-bit
+	unsigned short     - 2     - Unsigned 16-bit
+	int                - 4     - Signed 32-bit
+	unsigned int       - 4     - Unsigned 32-bit
+	long               - 4     - Signed 32-bit
+	unsigned long      - 4     - Unsigned 32-bit
+	void               - -     - Used for functions with no return value
+	pointer            - 4     - Any T* / T**
+	struct Name        - N     - Packed structure (no alignment padding)
+
+	-# All integer arithmetic is performed in 32-bit registers.
+	-# sizeof(type) and sizeof expr are supported for base types and pointers.
+
+
+Variables and storage:
+	int x;                 // local variable on stack
+	int g;                 // global variable in .data or .bss
+	static int s;          // global with internal linkage
+	extern int e;          // defined in another module
+	int arr[10];           // array
+	char *p = "hello";     // pointer initialized with string literal
+
+	-# Local variables live in the function stack frame.
+	-# Global variables without initializer go to .bss; initialized go to .data.
+	-# extern variables do not allocate storage, they only declare a symbol.
+	-# static functions/variables are not exported via .global.
+
+
+Functions:
+	int add(int a, int b) {
+	    return a + b;
+	}
+
+	extern void helper(void);   // declaration only
+
+	int main(void) {
+	    return add(1, 2);
+	}
+
+	-# Functions default to external linkage unless declared static.
+	-# Arguments are passed on the stack right-to-left; caller cleans the stack.
+	-# Return values up to 4 bytes use EX1 (dword), X1 (word) or XL1 (byte).
+	-# Empty parameter list () means "no parameters".
+	-# Recursion is supported.
+
+
+Control flow:
+
+	if (cond) { ... } else { ... }
+	while (cond) { ... }
+	do { ... } while (cond);
+	for (init; cond; update) { ... }
+	switch (x) { case 1: ...; break; default: ...; }
+	break;
+	continue;
+	return expr;
+	goto label;
+	label: stmt;
+
+	-# break/continue work inside loops.
+	-# switch is parsed but case labels are treated as ordinary labels in MVP.
+
+
+Expressions and operators:
+	#Operator - #Description
+	+ - * / % - Arithmetic
+	& | ^ ~ << >> - Bitwise
+	== != < > <= >= - Comparisons
+	&& || ! - Logical
+	++ -- - Pre/post increment/decrement
+	& * - Address-of / dereference
+	= += -= *= /= %= &= |= ^= <<= >>= - Assignment
+	?: - Ternary (reserved, not supported in MVP)
+	, - Comma (lowest precedence)
+
+	-# Operator precedence follows C.
+	-# Pointer arithmetic scales by sizeof(*p).
+
+
+Preprocessor:
+	#include "file.h"
+	#include <file.h>
+	#define NAME value
+	#ifdef NAME
+	#ifndef NAME
+	#else
+	#endif
+
+	-# #define supports constant macros only (no function-like macros).
+	-# Include search path: source directory + i80148/tools/Y/stdlib/.
+	-# Include guards prevent multiple inclusion.
+
+
+Standard library headers:
+	#Header     - #Contents
+	yio.h       - putchar, getchar, puts, gets, print_int, print_uint,
+	              print_hex, print_ptr, printf
+	ystring.h   - strlen, strcpy, strncpy, memcpy, memmove, memset, memcmp
+	ystdlib.h   - malloc, free, atoi, abs, exit
+	ydisk.h     - disk_read, disk_write
+
+	-# printf supports %d, %u, %x, %p, %s, %c and %%.
+	-# malloc/free use an explicit free list with block splitting and
+	-# coalescing of adjacent free blocks.
+
+
+Runtime environment:
+	-# Flat binary programs are assembled at .org 0x00060000 (user RAM).
+	-# Stack pointer is initialized to 0x000FFF00.
+	-# Base pointer BP is used for stack frames.
+	-# Heap starts immediately after .data and grows upward toward the stack.
+	-# Output goes to TERM_OUT (MMIO 0x00020018).
+	-# Keyboard input is read from KBD_ASCII (MMIO 0x0002000B).
+
+
+Memory layout of generated code (flat mode):
+	#Region                 - #Address
+	Code (.text)            - 0x00060000
+	Initialized data        - immediately after code (.data)
+	Heap / BSS              - after .data, grows upward
+	Stack                   - grows downward from 0x000FFF00
+
+
+Object mode layout:
+	-# Each Y module is compiled to a CASM148 object file.
+	-# The startup file stdlib/crt0_y.o sets SP and calls main.
+	-# Runtime is provided by stdlib/runtime.o.
+	-# LINK148.py places .text at the base address, .data after it, .bss after data.
+
+
+Example program:
+	#include <yio.h>
+
+	int main(void) {
+	    puts("Hello from Y!");
+	    print_int(12345);
+	    return 0;
+	}
+
+
+Example with object-mode linkage:
+	// main.y
+	extern void print_string(char *s);
+
+	int main(void) {
+	    print_string("from Y\n");
+	    return 42;
+	}
+
+	// helper.asm
+	.text
+	.global print_string
+	print_string:
+	    PUSH BP
+	    COPY BP, SP
+	    LOD.DW IX, [BP-8]
+	_loop:
+	    LOD.B XL1, [IX]
+	    CMP.B XL1, 0
+	    JMP.EQ _done
+	    STR.B XL1, [0x00020018]
+	    INC IX
+	    JMP _loop
+	_done:
+	    COPY SP, BP
+	    POP BP
+	    RET
+
+
+Known limitations:
+	-# No floating point types.
+	-# No long long / 64-bit types.
+	-# No unions.
+	-# No function pointers.
+	-# No inline assembly (asm { ... } is reserved).
+	-# Structures cannot be returned or passed by value.
+	-# No floating point types.
+	-# No long long / 64-bit types.
+	-# No unions.
+	-# No function pointers.
+	-# No inline assembly (asm { ... } is reserved).
+	-# Structures cannot be returned or passed by value.
+	-# No i8046 backend.

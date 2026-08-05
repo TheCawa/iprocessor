@@ -1,6 +1,6 @@
 CASM148 - Cawas Assembler for i80148
 
-	-# Version: 0.1
+	-# Version: 0.7
 	-# Target: i80148 (32-bit flat architecture)
 	-# Output: flat binary (*.bin) + Logisim hex (*.hex)
 	-# Byte order: BIG ENDIAN

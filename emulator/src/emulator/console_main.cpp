@@ -67,12 +67,41 @@ static std::string resolve_bios_path(const char* user_path) {
 }
 
 static void print_usage(const char* prog) {
-    std::cerr << "Usage: " << prog << " [--cpu <name>] [--bios <path>] [--ram <size>] [--vram <size>] <file> [load_addr] [disk_image]\n";
+    std::cerr << "Usage: " << prog << " [--cpu <name>] [--bios <path>] [--ram <size>] [--vram <size>] [--dump-term] <file> [load_addr] [disk_image]\n";
+    std::cerr << "\nOptions:\n";
+    std::cerr << "  --dump-term   Print terminal VRAM contents after the CPU halts.\n";
     std::cerr << "\nExamples:\n";
     std::cerr << "  " << prog << " --cpu i80148 program.bin 0x00060000 disk.bin\n";
     std::cerr << "  " << prog << " --cpu i8046  program.bin 0x0000\n";
     std::cerr << "  " << prog << " --bios ../i80148/PC48/Programs/CBIOS/CBIOS.bin program.bin\n";
     std::cerr << "  " << prog << " --ram 16M --vram 1M program.bin\n";
+    std::cerr << "  " << prog << " --dump-term program.bin 0x00060000\n";
+}
+
+static void print_terminal(const Cpu* cpu) {
+    if (!cpu || !cpu->vram) return;
+
+    uint32_t base = cpu->term_buffer;
+    uint32_t cols = cpu->term_res_x ? cpu->term_res_x
+                                     : (cpu->backend ? cpu->backend->vbuffer_cols : 80);
+    uint32_t rows = cpu->term_res_y ? cpu->term_res_y
+                                     : (cpu->backend ? cpu->backend->vbuffer_rows : 25);
+    if (cols == 0 || rows == 0) return;
+    if (base + rows * cols * 2 > cpu->vram_size) return;
+
+    std::cout << "\n=== Terminal output ===\n";
+    for (uint32_t y = 0; y < rows; y++) {
+        std::string line;
+        line.reserve(cols);
+        for (uint32_t x = 0; x < cols; x++) {
+            char c = static_cast<char>(cpu->vram[base + (y * cols + x) * 2]);
+            if (c == '\0' || c == '\r') c = ' ';
+            line.push_back(c);
+        }
+        // Trim trailing spaces so empty lines don't dominate the output.
+        while (!line.empty() && line.back() == ' ') line.pop_back();
+        std::cout << line << "\n";
+    }
 }
 
 static void print_registers(const CpuBackend* backend, Cpu* cpu) {
@@ -105,9 +134,12 @@ int main(int argc, char* argv[]) {
     const char* bios_path = nullptr;
     const char* ram_size_str = nullptr;
     const char* vram_size_str = nullptr;
+    bool dump_term = false;
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--ram") == 0) {
+        if (strcmp(argv[i], "--dump-term") == 0) {
+            dump_term = true;
+        } else if (strcmp(argv[i], "--ram") == 0) {
             if (i + 1 < argc) {
                 ram_size_str = argv[++i];
             } else {
@@ -250,6 +282,10 @@ int main(int argc, char* argv[]) {
         std::cout << "\n=== CPU Halted after " << steps << " steps ===\n";
     } else {
         std::cout << "\n=== Step limit reached (" << steps << " steps) ===\n";
+    }
+
+    if (dump_term) {
+        print_terminal(&cpu);
     }
 
     print_registers(backend, &cpu);

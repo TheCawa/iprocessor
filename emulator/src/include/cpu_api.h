@@ -142,6 +142,7 @@ struct Cpu {
     uint8_t  term_cursor_x;      // legacy 8-bit cursor position
     uint8_t  term_cursor_y;
     bool     term_cursor_visible;
+    bool     term_scroll_enabled; // when false, terminal output does not scroll
 
     // Keyboard input state
     char kbd_buffer[256];

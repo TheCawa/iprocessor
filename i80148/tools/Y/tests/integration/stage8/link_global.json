@@ -1,0 +1,98 @@
+{
+  "arch": "i80148",
+  "entry": null,
+  "sections": {
+    "text": {
+      "addr": null,
+      "data": [
+        14,
+        25,
+        33,
+        0,
+        25,
+        24,
+        35,
+        10,
+        1,
+        0,
+        0,
+        0,
+        0,
+        30,
+        0,
+        0,
+        0,
+        0,
+        0,
+        33,
+        0,
+        24,
+        25,
+        15,
+        25,
+        19
+      ]
+    },
+    "data": {
+      "addr": null,
+      "data": [
+        0,
+        0,
+        0,
+        30,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "bss": {
+      "addr": null,
+      "size": 0,
+      "data": []
+    }
+  },
+  "symbols": {
+    "MAIN": {
+      "section": "text",
+      "offset": 0,
+      "global": true
+    },
+    "_Y_RET_MAIN": {
+      "section": "text",
+      "offset": 19,
+      "global": false
+    },
+    "_HEAP_CURRENT": {
+      "section": "data",
+      "offset": 0,
+      "global": true
+    },
+    "_HEAP_START": {
+      "section": "data",
+      "offset": 4,
+      "global": true
+    },
+    "MAGIC_VALUE": {
+      "section": null,
+      "offset": 0,
+      "global": false,
+      "undefined": true
+    }
+  },
+  "relocations": [
+    {
+      "section": "text",
+      "offset": 8,
+      "type": "abs32",
+      "symbol": "MAGIC_VALUE"
+    },
+    {
+      "section": "text",
+      "offset": 15,
+      "type": "rel32",
+      "symbol": "_Y_RET_MAIN",
+      "pc_after": 19
+    }
+  ]
+}

@@ -52,7 +52,8 @@ I/O registers map:
 	0013h - 00020013h - R   - ERROR_CODE    - formal
 	
 U   0018h - 00020018h - W   - TERM_OUT
-U   0019h - 00020019h - W   - TERM_COMMAND - terminal commands (0x01=clear, 0x02=cursor on, 0x03=cursor off)
+U   0019h - 00020019h - W   - TERM_COMMAND - terminal commands (0x01=clear, 0x02=cursor on, 0x03=cursor off,
+                                                       0x04=scroll on, 0x05=scroll off)
 	001Ah - 0002001Ah - R/W - VC_MODE        - default video card mode select
 	001Bh - 0002001Bh - R/W - TERM_ATTR      - 32-bit global fg/bg attribute (low 16 = fg, high 16 = bg)
 	
