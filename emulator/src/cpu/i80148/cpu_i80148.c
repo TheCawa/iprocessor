@@ -177,28 +177,28 @@ uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
         return cpu_read_vram(cpu, addr - VBUFFER_BASE_I80148, mode);
     }
 
-    if (mode == MODE_DWORD && addr == 0x0002000C) {
-        return (uint32_t)cpu->mem_size;
+    if (addr == 0x0002000C) {
+        return (uint32_t)cpu->mem_size & MODE_MASKS[mode];
     }
-    if (mode == MODE_DWORD && addr == TERM_ATTR_ADDR_I80148) {
-        return cpu->term_attr;
+    if (addr == TERM_ATTR_ADDR_I80148) {
+        return cpu->term_attr & MODE_MASKS[mode];
     }
-    if (mode == MODE_DWORD && addr == TERM_RES_X_ADDR_I80148) {
+    if (addr == TERM_RES_X_ADDR_I80148) {
         if (cpu->update_term_res) cpu->update_term_res(cpu);
-        return cpu->term_res_x;
+        return cpu->term_res_x & MODE_MASKS[mode];
     }
-    if (mode == MODE_DWORD && addr == TERM_RES_Y_ADDR_I80148) {
+    if (addr == TERM_RES_Y_ADDR_I80148) {
         if (cpu->update_term_res) cpu->update_term_res(cpu);
-        return cpu->term_res_y;
+        return cpu->term_res_y & MODE_MASKS[mode];
     }
-    if (mode == MODE_DWORD && addr == TERM_POS_X_ADDR_I80148) {
-        return cpu->term_pos_x;
+    if (addr == TERM_POS_X_ADDR_I80148) {
+        return cpu->term_pos_x & MODE_MASKS[mode];
     }
-    if (mode == MODE_DWORD && addr == TERM_POS_Y_ADDR_I80148) {
-        return cpu->term_pos_y;
+    if (addr == TERM_POS_Y_ADDR_I80148) {
+        return cpu->term_pos_y & MODE_MASKS[mode];
     }
-    if (mode == MODE_DWORD && addr == TERM_BUFFER_ADDR_I80148) {
-        return cpu->term_buffer;
+    if (addr == TERM_BUFFER_ADDR_I80148) {
+        return cpu->term_buffer & MODE_MASKS[mode];
     }
     if (mode == MODE_BYTE && addr == KBD_ASCII_ADDR_I80148) {
         return kbd_read_ascii((Cpu*)cpu);
