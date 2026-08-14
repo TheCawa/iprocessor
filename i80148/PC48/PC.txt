@@ -96,6 +96,27 @@ U   0019h - 00020019h - W   - TERM_COMMAND - terminal commands (0x01=clear, 0x02
 	0055h - 00020055h - ??? - Reserved
 	0056h - 00020056h - ??? - Reserved
 	0057h - 00020057h - ??? - Reserved
+		0080h - 00020080h - R   - RNG_RAND     - read: next random byte/dword
+		0081h - 00020081h - W   - RNG_SEED     - write: reseed hardware RNG
+
+		0090h - 00020090h - R/W - FPU_A        - operand A (IEEE 754 float32)
+		0094h - 00020094h - R/W - FPU_B        - operand B (IEEE 754 float32)
+		0098h - 00020098h - W   - FPU_OP       - write operation code (executes immediately)
+		009Ch - 0002009Ch - R   - FPU_RESULT   - result (IEEE 754 float32)
+		00A0h - 000200A0h - R/W - FPU_FLAGS    - status flags
+
+		00B0h - 000200B0h - R/W - PSG_TONE0    - channel 0 tone period, 16-bit
+		00B2h - 000200B2h - R/W - PSG_TONE1    - channel 1 tone period, 16-bit
+		00B4h - 000200B4h - R/W - PSG_TONE2    - channel 2 tone period, 16-bit
+		00B6h - 000200B6h - R/W - PSG_NOISE    - noise period
+		00B7h - 000200B7h - R/W - PSG_MIXER    - tone enable (bits 0-2), noise enable (bits 3-5)
+		00B8h - 000200B8h - R/W - PSG_VOL0     - channel 0 volume (4-bit) + bit 7 envelope enable
+		00B9h - 000200B9h - R/W - PSG_VOL1     - channel 1 volume
+		00BAh - 000200BAh - R/W - PSG_VOL2     - channel 2 volume
+		00BBh - 000200BBh - R/W - PSG_ENV_PERIOD - envelope period, 16-bit
+		00BDh - 000200BDh - R/W - PSG_ENV_SHAPE  - 0=off, 1=attack, 2=decay, 3=triangle, 4=sawtooth
+		00BEh - 000200BEh - R   - PSG_ENV_LEVEL  - current envelope level (0-15)
+
 	
 	0200h - 00020200h - R/W - DEV_CLASS_COUNT
 	0201h - 00020201h - R/W - DEV_CLASS_SELECT
@@ -178,6 +199,9 @@ Device classes:
 	03h - Timer
 	04h - RTC
 	05h - Video
+	06h - RNG
+	07h - FPU
+	08h - Audio (PSG)
 	FFh - Unknown
 	
 Device vendors:
@@ -212,3 +236,36 @@ Video card "default" modes (selected by VC_MODE 0002001Ah):
 	20h - 320x240 256-color graphics
 	21h - 640x480 256-color graphics
 	22h - 800x600 256-color graphics
+
+
+FPU operation codes (write to FPU_OP to execute):
+	00h - ADD	01h - SUB	02h - MUL	03h - DIV
+	04h - SQRT	05h - MIN	06h - MAX	07h - CMP
+	10h - ITOF (int32 A -> float result)
+	11h - FTOI (float A -> int32 result bits in RESULT)
+	12h - UTOF (uint32 A -> float result)
+	13h - FTOU (float A -> uint32 result bits in RESULT)
+	20h - SIN	21h - COS	22h - TAN	23h - COT
+	24h - LOG	25h - EXP
+
+FPU flags (FPU_FLAGS):
+	bit 0 - ZERO	bit 1 - SIGN	bit 2 - DIV0	bit 3 - INVALID
+	bit 4 - GT (cmp A>B)	bit 5 - EQ (cmp A==B)	bit 6 - LT (cmp A<B)
+
+PSG usage notes:
+	- Sample rate 44100 Hz, mono, 16-bit, SDL2 audio callback.
+	- Tone period value = (sample_rate / (2 * desired_frequency)).
+	  Example: for 440 Hz use period = 44100 / (2*440) ~= 50.
+	- Mixer bits 0-2 enable tone for channels 0-2; bits 3-5 enable noise.
+	- Volume register bit 7 set replaces channel volume with envelope level.
+	- Envelope shapes: 0=off, 1=attack (0->15), 2=decay (15->0),
+	  3=triangle (0->15->0 looping), 4=sawtooth (0->15 looping).
+
+RNG usage notes:
+	- Reading RNG_RAND advances the generator and returns the next value.
+	- Writing RNG_SEED reseeds the generator for reproducible sequences.
+
+Disk image support:
+	- Disk images can be .bin, .hex or .img.
+	- .bin and .img are treated as raw sector images.
+	- .hex is parsed as Logisim/simple hex format.

@@ -21,6 +21,7 @@
 #include "system.h"
 #include "input.h"
 #include "pit.h"
+#include "psg.h"
 #include "imgui.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_sdlrenderer2.h"
@@ -213,7 +214,9 @@ bool emulator_init(SDL_Window** out_window, SDL_Renderer** out_renderer, const V
     if (!vc) vc = videocard_get_default();
     g_vc = vc;
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) return false;
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0) return false;
+
+    psg_audio_init();
 
     g_window = SDL_CreateWindow("Iprocessor Emulator",
                                 SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -506,7 +509,7 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
             }
             if (ImGui::MenuItem("Open Disk Image...")) {
                 if (open_file_dialog(g_disk_path, sizeof(g_disk_path),
-                        "Disk images (*.bin;*.hex)\0*.bin;*.hex\0All files (*.*)\0*.*\0",
+                        "Disk images (*.bin;*.hex;*.img)\0*.bin;*.hex;*.img\0All files (*.*)\0*.*\0",
                         "Open Disk Image")) {
                     if (g_disk_drive_idx >= 0 && g_disk_drive_idx < DISK_MAX_DRIVES) {
                         strncpy(cpu->disk_drives[g_disk_drive_idx].image_path, g_disk_path,
@@ -1083,6 +1086,8 @@ bool emulator_handle_events(Cpu* cpu) {
 }
 
 void emulator_shutdown() {
+    psg_audio_shutdown();
+
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();

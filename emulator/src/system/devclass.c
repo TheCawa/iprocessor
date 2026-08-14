@@ -27,6 +27,9 @@ static const DeviceClassEntry g_devices[] = {
     { 3, DEV_CLASS_TIMER,   DEV_VENDOR_SYSTEM, "Timer"        },
     { 4, DEV_CLASS_RTC,     DEV_VENDOR_SYSTEM, "RTC"          },
     { 5, DEV_CLASS_VIDEO,   DEV_VENDOR_SYSTEM, "Video"        },
+    { 6, DEV_CLASS_RNG,     DEV_VENDOR_SYSTEM, "RNG"          },
+    { 7, DEV_CLASS_FPU,     DEV_VENDOR_SYSTEM, "FPU"          },
+    { 8, DEV_CLASS_AUDIO,   DEV_VENDOR_SYSTEM, "PSG"          },
 };
 
 #define DEV_COUNT (sizeof(g_devices) / sizeof(g_devices[0]))

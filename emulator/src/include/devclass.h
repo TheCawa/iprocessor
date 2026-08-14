@@ -34,6 +34,9 @@ extern "C" {
 #define DEV_CLASS_TIMER   0x03
 #define DEV_CLASS_RTC     0x04
 #define DEV_CLASS_VIDEO   0x05
+#define DEV_CLASS_RNG     0x06
+#define DEV_CLASS_FPU     0x07
+#define DEV_CLASS_AUDIO   0x08
 
 // Vendor identifiers.
 #define DEV_VENDOR_SYSTEM 0x01

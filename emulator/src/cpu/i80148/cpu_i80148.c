@@ -22,6 +22,9 @@
 #include "system.h"
 #include "rtc.h"
 #include "pit.h"
+#include "rng.h"
+#include "psg.h"
+#include "fpu.h"
 #include "input.h"
 #include <stdio.h>
 #include "devclass.h"
@@ -55,6 +58,9 @@ void cpu_init_i80148(Cpu* cpu) {
     cpu->screen_dirty = true;
     input_init(cpu);
     pit_reset_pending(cpu);
+    rng_init(cpu);
+    psg_bind_cpu(cpu);
+    fpu_bind_cpu(cpu);
     term_clear(cpu);
 }
 
@@ -77,6 +83,9 @@ void cpu_reset_i80148(Cpu* cpu) {
     cpu->term_scroll_enabled = true;
     input_reset(cpu);
     pit_reset_pending(cpu);
+    rng_reset(cpu);
+    psg_reset(cpu);
+    fpu_reset(cpu);
     term_clear(cpu);
 }
 
@@ -224,6 +233,27 @@ uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
     if (mode == MODE_DWORD && pit_is_mmio(addr)) {
         return pit_read_dword(cpu, addr);
     }
+    // RNG MMIO reads (0x20080..0x20081)
+    if (mode == MODE_BYTE && rng_is_mmio(addr)) {
+        return rng_read_byte(cpu, addr);
+    }
+    if (mode == MODE_DWORD && addr == RNG_ADDR_RAND) {
+        return rng_read_dword(cpu, addr);
+    }
+    // FPU MMIO reads (0x20090..0x200A0)
+    if (mode == MODE_BYTE && fpu_is_mmio(addr)) {
+        return fpu_read_byte(cpu, addr);
+    }
+    if (mode == MODE_DWORD && fpu_is_mmio(addr)) {
+        return fpu_read_dword(cpu, addr);
+    }
+    // PSG MMIO reads (0x200B0..0x200BE)
+    if (mode == MODE_BYTE && psg_is_mmio(addr)) {
+        return psg_read_byte(cpu, addr);
+    }
+    if (mode == MODE_WORD && psg_is_mmio(addr)) {
+        return psg_read_word(cpu, addr);
+    }
     // Device class enumeration MMIO reads (0x20200..0x2023F).
     if (mode == MODE_BYTE && devclass_is_mmio(addr)) {
         return devclass_read_byte(cpu, addr);
@@ -358,6 +388,38 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
     }
     if (mode == MODE_DWORD && pit_is_mmio(addr)) {
         pit_write_dword(cpu, addr, (uint32_t)(val & 0xFFFFFFFF));
+        return;
+    }
+    // RNG MMIO writes (0x20080..0x20081)
+    if (mode == MODE_BYTE && rng_is_mmio(addr)) {
+        rng_write_byte(cpu, addr, (uint8_t)(val & 0xFF));
+        return;
+    }
+    if (mode == MODE_DWORD && rng_is_mmio(addr)) {
+        rng_write_dword(cpu, addr, (uint32_t)(val & 0xFFFFFFFF));
+        return;
+    }
+    // FPU MMIO writes (0x20090..0x200A0)
+    if (mode == MODE_BYTE && fpu_is_mmio(addr)) {
+        fpu_write_byte(cpu, addr, (uint8_t)(val & 0xFF));
+        return;
+    }
+    if (mode == MODE_DWORD && fpu_is_mmio(addr)) {
+        fpu_write_dword(cpu, addr, (uint32_t)(val & 0xFFFFFFFF));
+        return;
+    }
+    // PSG MMIO writes (0x200B0..0x200BE)
+    if (mode == MODE_BYTE && psg_is_mmio(addr)) {
+        psg_write_byte(cpu, addr, (uint8_t)(val & 0xFF));
+        return;
+    }
+    if (mode == MODE_WORD && psg_is_mmio(addr)) {
+        psg_write_word(cpu, addr, (uint16_t)(val & 0xFFFF));
+        return;
+    }
+    if (mode == MODE_DWORD && psg_is_mmio(addr)) {
+        psg_write_word(cpu, addr, (uint16_t)((val >> 16) & 0xFFFF));
+        psg_write_word(cpu, addr + 2, (uint16_t)(val & 0xFFFF));
         return;
     }
     if (mode == MODE_BYTE && devclass_is_mmio(addr)) {
