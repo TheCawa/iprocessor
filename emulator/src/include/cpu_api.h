@@ -38,7 +38,7 @@ typedef struct Cpu Cpu;
 
 // Disk controller limits and per-drive state.
 #define DISK_MAX_DRIVES 4
-#define DISK_SECTOR_SIZE 512
+#define DISK_SECTOR_SIZE 1024
 
 typedef struct {
     char     image_path[512];

@@ -395,10 +395,16 @@ void disk_write_byte(Cpu* cpu, uint32_t addr, uint8_t val) {
 }
 
 uint32_t disk_read_dword(Cpu* cpu, uint32_t addr) {
+    DiskDrive* drive = DISK_ACTIVE(cpu);
     switch (addr) {
-        case 0x00020110: return DISK_ACTIVE(cpu)->status;
+        case 0x00020110: return drive->status;              // DISK_STATUS
+        case 0x00020112: return drive->lba;                 // DISK_LBA
+        case 0x00020113: return drive->lba >> 16;           // DISK_LBA_HI
+        case 0x00020114: return drive->buffer;              // DISK_BUFFER
+        case 0x00020115: return drive->count;               // DISK_COUNT
+        case 0x00020119: return DISK_SECTOR_SIZE;           // LBA_SIZE (0x0400)
         case 0x0002011A: return disk_read_dword_from_image(cpu); // DISK_DOUT
-        case 0x0002011C: return DISK_ACTIVE(cpu)->buffer_offset;
+        case 0x0002011C: return drive->buffer_offset;       // BUFFER_OFFSET
     }
     return 0;
 }
@@ -406,6 +412,11 @@ uint32_t disk_read_dword(Cpu* cpu, uint32_t addr) {
 uint8_t kbd_read_ascii(Cpu* cpu) {
     if (cpu->kbd_buffer_pos < cpu->kbd_buffer_len) {
         uint8_t c = (uint8_t)cpu->kbd_buffer[cpu->kbd_buffer_pos++];
+        if (cpu->kbd_buffer_pos >= cpu->kbd_buffer_len) {
+            cpu->kbd_buffer_pos = 0;
+            cpu->kbd_buffer_len = 0;
+        }
+
         if (c == '\n') c = '\r';
         return c;
     }
@@ -418,7 +429,6 @@ uint8_t kbd_read_ascii(Cpu* cpu) {
     if (_kbhit()) {
         int c = _getch();
         if (c == 0 || c == 0xE0) {
-            // Extended key (arrows, function keys): consume second code.
             if (_kbhit()) _getch();
             return 0;
         }
@@ -427,7 +437,6 @@ uint8_t kbd_read_ascii(Cpu* cpu) {
     }
     return 0;
 #else
-    // Fallback: line-buffered stdin for non-Windows builds.
     if (!fgets(cpu->kbd_buffer, sizeof(cpu->kbd_buffer), stdin)) {
         return 0;
     }

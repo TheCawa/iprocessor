@@ -296,9 +296,8 @@ static void term_clear(Cpu* cpu);
 static void push(Cpu* cpu, uint64_t val);
 static uint64_t pop(Cpu* cpu);
 
-static void cpu_trigger_int(Cpu* cpu, uint8_t vector) {
-    uint32_t ic_after = (uint32_t)state(cpu)->regs[REG_IC];
-    push(cpu, ic_after);
+static void cpu_trigger_int(Cpu* cpu, uint8_t vector, uint32_t return_addr) {
+    push(cpu, return_addr);
     push(cpu, state(cpu)->regs[REG_FL]);
     cpu->irq_enabled = false;
     uint32_t vec_addr = (uint32_t)(state(cpu)->regs[REG_IDTR] + ((uint32_t)vector << 2));
@@ -775,7 +774,7 @@ int cpu_step_i80148(Cpu* cpu) {
             irq_vector = pit_service_irq(cpu);
         }
         if (irq_vector >= 0) {
-            cpu_trigger_int(cpu, (uint8_t)irq_vector);
+            cpu_trigger_int(cpu, (uint8_t)irq_vector, (uint32_t)state(cpu)->regs[REG_IC]);
             return 1;
         }
     }
@@ -1144,7 +1143,7 @@ int cpu_step_i80148(Cpu* cpu) {
             break;
 
         case 0x25: { // INT
-            cpu_trigger_int(cpu, rd);
+            cpu_trigger_int(cpu, rd, ic);
             return len;
         }
         case 0x26: // IRET
