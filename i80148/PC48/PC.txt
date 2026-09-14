@@ -38,8 +38,8 @@ I/O registers map:
 	0007h - 00020007h - R/W - BANK          - VRAM bank selector
 	
 	0008h - 00020008h - R/W - KBD_CTRL      - formal
-	0009h - 00020009h - R   - KBD_SCANCODE  - formal
-	000Ah - 0002000Ah - ??? - Reserved
+	0009h - 00020009h - R   - KBD_SCANCODE  - next buffered scancode (PC set-1); read consumes the slot
+	000Ah - 0002000Ah - R   - KBD_MODIFIER  - latched modifier bitmask (see notes)
 	000Bh - 0002000Bh - R   - KBD_ASCII     - active ASCII keyboard port
 	000Ch - 0002000Ch - R   - RAM_SIZE
 	
@@ -87,12 +87,12 @@ U   0019h - 00020019h - W   - TERM_COMMAND - terminal commands (0x01=clear, 0x02
 	0036h - 00020036h - ??? - Reserved
 	0037h - 00020037h - ??? - Reserved
 	
-	0040h - 00020040h - R   - MOUSE_X
-	0044h - 00020044h - R   - MOUSE_Y
-	0048h - 00020048h - R   - MOUSE_BTN
-	004Ch - 0002004Ch - R   - MOUSE_DELTA_X
-	0050h - 00020050h - R   - MOUSE_DELTA_Y
-	0054h - 00020054h - ??? - Reserved
+	0040h - 00020040h - R/W - MOUSE_X          (bounds follow TERM_RES_X)
+	0044h - 00020044h - R/W - MOUSE_Y          (bounds follow TERM_RES_Y)
+	0048h - 00020048h - R/W - MOUSE_BTN
+	004Ch - 0002004Ch - R/W - MOUSE_DELTA_X
+	0050h - 00020050h - R/W - MOUSE_DELTA_Y
+	0054h - 00020054h - R/W - MOUSE_SENS    - sensitivity, fixed-point multiplier in 1/256 (0x100 = 1.0)
 	0055h - 00020055h - ??? - Reserved
 	0056h - 00020056h - ??? - Reserved
 	0057h - 00020057h - ??? - Reserved
@@ -264,6 +264,39 @@ PSG usage notes:
 RNG usage notes:
 	- Reading RNG_RAND advances the generator and returns the next value.
 	- Writing RNG_SEED reseeds the generator for reproducible sequences.
+
+Keyboard notes:
+	- KBD_ASCII (0x2000B), KBD_SCANCODE (0x20009) and mouse state are serviced
+	  by GUI key events. ASCII and SCANCODE read from the same FIFO slot, so they
+	  stay in sync; a read of either consumes the slot.
+
+Mouse notes:
+	- MOUSE_X/Y bounds follow TERM_RES_X/Y (0x20060/0x20064): in graphics modes
+	  the range is the pixel size (640x480 -> 0..639 / 0..479), in text modes it
+	  is the character grid (80x25 -> 0..79 / 0..24). Coordinates are no longer
+	  hard-limited to 320x200.
+	- MOUSE_X/Y are writable: software may reposition the pointer (e.g. center it
+	  on the screen); out-of-range writes are clamped to the current resolution.
+	  MOUSE_DELTA_X/Y and MOUSE_BTN are writable as well.
+	- MOUSE_SENS (0x20054) is a software sensitivity multiplier applied to the
+	  host-relative mouse movement before it moves the pointer and accumulates
+	  into MOUSE_DELTA_X/Y. 0x100 (=256) is the default, i.e. 1.0 (no change);
+	  0x200 doubles the cursor speed, 0x80 halves it. Write 0 to reset to 1.0.
+	- ASCII is shift/caps aware (e.g. SHIFT+4 -> '$', CAPS+letter -> 'A',
+	  SHIFT+CAPS+letter -> 'a').
+	- KBD_SCANCODE returns the PC set-1 scancode (Escape=0x01, digits 1-9=0x02-0x0A,
+	  0=0x0B, Enter=0x1C, space=0x39, arrows=0x48/0x50/0x4B/0x4D, Delete=0x53, ...).
+	- Key mapping is by PHYSICAL key position (fixed US layout), so every key works
+	  the same regardless of the host OS keyboard layout (Russian, German, ...): the
+	  key that prints '<' on a US layout always gives ',' unshifted and '<' with
+	  Shift, even if the host layout labels it 'Б'.
+	- KBD_MODIFIER (0x2000A) bitmask:
+	    bit 0 - SHIFT
+	    bit 1 - CTRL
+	    bit 2 - ALT
+	    bit 3 - CAPS (Caps Lock state)
+	    bit 4 - TAB (Tab held)
+	    bit 5 - WIN / Commmand / Super
 
 Disk image support:
 	- Disk images can be .bin, .hex or .img.

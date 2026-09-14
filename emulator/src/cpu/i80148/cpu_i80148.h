@@ -108,6 +108,8 @@ typedef CpuMode_i80148 CpuMode;
 #define VC_MODE_ADDR_I80148     0x0002001A  // default video card mode select
 #define TERM_ATTR_ADDR_I80148   0x0002001B  // 32-bit fg/bg attribute
 #define KBD_ASCII_ADDR_I80148   0x0002000B
+#define KBD_SCANCODE_ADDR_I80148 0x00020009
+#define KBD_MODIFIER_ADDR_I80148 0x0002000A
 #define MEM_SIZE_ADDR_I80148    0x0002000C
 #define VRAM_BANK_REG_I80148    0x00020007  // video memory bank selector (legacy)
 #define VBUFFER_BASE_I80148     0x00100000  // physical VRAM base (legacy, now in separate vram buffer)

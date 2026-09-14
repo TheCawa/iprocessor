@@ -37,21 +37,37 @@ extern "C" {
 #define MOUSE_IRQ_VECTOR    0x22
 
 // Mouse MMIO registers (relative to any CPU backend's I/O space).
+// MOUSE_X/Y and MOUSE_DELTA_X/Y are R/W; MOUSE_BTN is R/W as well.
 #define MOUSE_X_ADDR        0x00020040
 #define MOUSE_Y_ADDR        0x00020044
 #define MOUSE_BTN_ADDR      0x00020048
 #define MOUSE_DELTA_X_ADDR  0x0002004C
 #define MOUSE_DELTA_Y_ADDR  0x00020050
-#define MOUSE_ADDR_END      0x00020053
+#define MOUSE_SENS_ADDR     0x00020054
+#define MOUSE_ADDR_END      0x00020054
+
+// Default mouse sensitivity (fixed-point multiplier in 1/256 units, 0x100 = 1.0).
+#define MOUSE_SENS_DEFAULT  0x100
 
 // Mouse button bits written to MOUSE_BTN_ADDR.
 #define MOUSE_BTN_LEFT      0x01
 #define MOUSE_BTN_RIGHT     0x02
 #define MOUSE_BTN_MIDDLE    0x04
 
-// Logical screen limits for absolute mouse coordinates.
+// Fallback limits for absolute mouse coordinates when the terminal resolution
+// is not available yet. In normal operation the bounds follow TERM_RES_X/Y
+// (pixels in graphics modes, character grid in text modes), so coordinates can
+// exceed the legacy 320x200 space (e.g. 640x480 / 800x600 graphics).
 #define MOUSE_MAX_X         319
 #define MOUSE_MAX_Y         199
+
+// KBD_MODIFIER bitmask (one latched byte read from MMIO 0x0002000A).
+#define KBD_MOD_SHIFT       0x01
+#define KBD_MOD_CTRL        0x02
+#define KBD_MOD_ALT         0x04
+#define KBD_MOD_CAPS        0x08
+#define KBD_MOD_TAB         0x10
+#define KBD_MOD_WIN         0x20  // Command / Super / Meta
 
 // Initialize / reset input state. Called from CPU backend init/reset.
 void input_init(Cpu* cpu);
@@ -59,6 +75,12 @@ void input_reset(Cpu* cpu);
 
 // Feed a key press.  Generates KBD_IRQ_VECTOR if IRQs are enabled.
 void input_feed_key(Cpu* cpu, char c);
+
+// Feed a key press together with its PC set-1 scancode (parallel FIFO).
+void input_feed_key_ex(Cpu* cpu, char c, uint8_t scancode);
+
+// Refresh the KBD_MODIFIER latch from the current modifier state.
+void input_set_modifiers(Cpu* cpu, uint8_t mod_bits);
 
 // Feed mouse movement in relative mode.  Generates MOUSE_IRQ_VECTOR.
 void input_mouse_move(Cpu* cpu, int dx, int dy);
@@ -75,9 +97,12 @@ static inline bool input_is_mmio(uint32_t addr) {
     return (addr >= MOUSE_X_ADDR && addr <= MOUSE_ADDR_END);
 }
 
-// MMIO accessors.
+// MMIO accessors. Reads return the current mouse state; writes reposition the
+// pointer (clamped to the current resolution) or set buttons/deltas.
 uint8_t  input_read_byte(Cpu* cpu, uint32_t addr);
 uint32_t input_read_dword(Cpu* cpu, uint32_t addr);
+void     input_write_byte(Cpu* cpu, uint32_t addr, uint8_t val);
+void     input_write_dword(Cpu* cpu, uint32_t addr, uint32_t val);
 
 #ifdef __cplusplus
 }

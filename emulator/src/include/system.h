@@ -48,6 +48,7 @@ void disk_drive_free_image(DiskDrive* drive);
 
 // Keyboard input helper.
 uint8_t kbd_read_ascii(Cpu* cpu);
+uint8_t kbd_read_scancode(Cpu* cpu);
 
 #ifdef __cplusplus
 }

@@ -20,6 +20,7 @@
 #include "emulator.hpp"
 #include "system.h"
 #include "input.h"
+#include "keymap.h"
 #include "pit.h"
 #include "psg.h"
 #include "imgui.h"
@@ -298,7 +299,7 @@ bool emulator_switch_vc(Cpu* cpu, const VideoCard* new_vc, SDL_Renderer* rendere
 }
 
 #define STATE_MAGIC   "IPSTATE"
-#define STATE_VERSION 1
+#define STATE_VERSION 2
 
 static bool save_machine_state(Cpu* cpu, const char* filename) {
     FILE* f = fopen(filename, "wb");
@@ -345,6 +346,7 @@ static bool save_machine_state(Cpu* cpu, const char* filename) {
     ok = ok && fwrite(&cpu->mouse_y, sizeof(cpu->mouse_y), 1, f) == 1;
     ok = ok && fwrite(&cpu->mouse_delta_x, sizeof(cpu->mouse_delta_x), 1, f) == 1;
     ok = ok && fwrite(&cpu->mouse_delta_y, sizeof(cpu->mouse_delta_y), 1, f) == 1;
+    ok = ok && fwrite(&cpu->mouse_sens, sizeof(cpu->mouse_sens), 1, f) == 1;
     ok = ok && fwrite(&cpu->mouse_buttons, sizeof(cpu->mouse_buttons), 1, f) == 1;
     ok = ok && fwrite(&cpu->mouse_irq_pending, sizeof(cpu->mouse_irq_pending), 1, f) == 1;
     ok = ok && fwrite(&cpu->disk_current_drive, sizeof(cpu->disk_current_drive), 1, f) == 1;
@@ -437,6 +439,7 @@ static bool load_machine_state(Cpu* cpu, const char* filename, std::vector<uint8
     ok = ok && fread(&cpu->mouse_y, sizeof(cpu->mouse_y), 1, f) == 1;
     ok = ok && fread(&cpu->mouse_delta_x, sizeof(cpu->mouse_delta_x), 1, f) == 1;
     ok = ok && fread(&cpu->mouse_delta_y, sizeof(cpu->mouse_delta_y), 1, f) == 1;
+    ok = ok && fread(&cpu->mouse_sens, sizeof(cpu->mouse_sens), 1, f) == 1;
     ok = ok && fread(&cpu->mouse_buttons, sizeof(cpu->mouse_buttons), 1, f) == 1;
     ok = ok && fread(&cpu->mouse_irq_pending, sizeof(cpu->mouse_irq_pending), 1, f) == 1;
     ok = ok && fread(&cpu->disk_current_drive, sizeof(cpu->disk_current_drive), 1, f) == 1;
@@ -988,6 +991,51 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
     SDL_RenderPresent(renderer);
 }
 
+// Map a physical SDL scancode + modifier state to an ASCII byte (shift/caps aware).
+// Scancodes are layout-independent, so every key works the same regardless of
+// the host keyboard layout (Russian, German, ...).
+static char emu_key_ascii(SDL_Scancode sc, Uint16 mod) {
+    char c = keymap_ascii_from_scancode((int)sc);
+    if (!c) return 0;
+    // Only typeable text keys honor Shift/Caps. Control bytes (arrows 0x48/0x50,
+    // DEL 0x7F, ...) must pass through unchanged even though their ASCII codes
+    // collide with printable letters ('H'/'P').
+    if (keymap_is_text_key((int)sc)) {
+        c = keymap_apply_shift(c, (mod & KMOD_SHIFT) != 0, (mod & KMOD_CAPS) != 0);
+    }
+    return c;
+}
+
+// Map a physical SDL scancode to a PC set-1 scancode (0 if unmapped).
+static uint8_t emu_key_scancode(SDL_Scancode sc) {
+    return keymap_set1_from_scancode((int)sc);
+}
+
+// Refresh the KBD_MODIFIER latch from the current SDL modifier state.
+static void emu_update_modifiers(Cpu* cpu, SDL_Event* e) {
+    if (e->key.keysym.scancode == SDL_SCANCODE_TAB) {
+        cpu->kbd_tab_down = (e->type == SDL_KEYDOWN);
+    }
+    Uint16 mod = e->key.keysym.mod;
+    uint8_t m = 0;
+    if (mod & KMOD_SHIFT) m |= KBD_MOD_SHIFT;
+    if (mod & KMOD_CTRL)  m |= KBD_MOD_CTRL;
+    if (mod & KMOD_ALT)   m |= KBD_MOD_ALT;
+    if (mod & KMOD_CAPS)  m |= KBD_MOD_CAPS;
+    if (mod & KMOD_GUI)   m |= KBD_MOD_WIN;
+    if (cpu->kbd_tab_down) m |= KBD_MOD_TAB;
+    input_set_modifiers(cpu, m);
+}
+
+// Feed a SDL key event into the emulated keyboard (scancode aware).
+static void emu_handle_key_event(Cpu* cpu, SDL_Event* e) {
+    emu_update_modifiers(cpu, e);
+    if (e->type != SDL_KEYDOWN || e->key.repeat) return;
+    char c = emu_key_ascii(e->key.keysym.scancode, e->key.keysym.mod);
+    if (!c) return;
+    input_feed_key_ex(cpu, c, emu_key_scancode(e->key.keysym.scancode));
+}
+
 bool emulator_handle_events(Cpu* cpu) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -1001,32 +1049,15 @@ bool emulator_handle_events(Cpu* cpu) {
                 continue;
             }
 
-            if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-                if (e.key.keysym.sym == SDLK_ESCAPE) {
-                    emulator_release_input();
-                    continue;
-                }
-
-                char c = 0;
-                if (e.key.keysym.sym >= SDLK_SPACE && e.key.keysym.sym <= SDLK_z) {
-                    c = (char)e.key.keysym.sym;
-                    if (e.key.keysym.mod & KMOD_SHIFT) {
-                        if (c >= 'a' && c <= 'z') c -= 32;
+            if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
+                emu_update_modifiers(cpu, &e);
+                if (e.type == SDL_KEYDOWN && !e.key.repeat) {
+                    if (e.key.keysym.sym == SDLK_ESCAPE) {
+                        emulator_release_input();
+                        continue;
                     }
-                }
-                switch (e.key.keysym.sym) {
-                    case SDLK_RETURN:     c = '\r'; break;
-                    case SDLK_BACKSPACE:  c = '\b'; break;
-                    case SDLK_TAB:        c = '\t'; break;
-                    case SDLK_ESCAPE:     c = 0x1B; break;
-                    case SDLK_DELETE:     c = 0x7F; break;
-                    case SDLK_KP_PERIOD:  c = 0x7F; break; // keypad Del (NumLock off)
-                    case SDLK_UP:         c = 0x48; break;
-                    case SDLK_DOWN:       c = 0x50; break;
-                    default: break;
-                }
-                if (c) {
-                    input_feed_key(cpu, c);
+                    char c = emu_key_ascii(e.key.keysym.scancode, e.key.keysym.mod);
+                    if (c) input_feed_key_ex(cpu, c, emu_key_scancode(e.key.keysym.scancode));
                 }
             }
 
@@ -1049,28 +1080,8 @@ bool emulator_handle_events(Cpu* cpu) {
 
         if (e.type == SDL_QUIT) return false;
 
-        if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-            char c = 0;
-            if (e.key.keysym.sym >= SDLK_SPACE && e.key.keysym.sym <= SDLK_z) {
-                c = (char)e.key.keysym.sym;
-                if (e.key.keysym.mod & KMOD_SHIFT) {
-                    if (c >= 'a' && c <= 'z') c -= 32;
-                }
-            }
-            switch (e.key.keysym.sym) {
-                case SDLK_RETURN: c = '\r'; break;
-                case SDLK_BACKSPACE: c = '\b'; break;
-                case SDLK_TAB: c = '\t'; break;
-                case SDLK_ESCAPE: c = 0x1B; break;
-                case SDLK_DELETE: c = 0x7F; break;
-                case SDLK_KP_PERIOD: c = 0x7F; break; // keypad Del (NumLock off)
-                case SDLK_UP:     c = 0x48; break;
-                case SDLK_DOWN:   c = 0x50; break;
-                default: break;
-            }
-            if (c) {
-                input_feed_key(cpu, c);
-            }
+        if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
+            emu_handle_key_event(cpu, &e);
         }
 
         if (e.type == SDL_MOUSEMOTION) {

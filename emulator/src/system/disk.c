@@ -200,6 +200,48 @@ static bool disk_drive_write_sector(DiskDrive* drive) {
     return written == DISK_SECTOR_SIZE;
 }
 
+// Commit the pending DIN dword (DISK_DIN register) into the sector buffer.
+// This is triggered by writing 8 to DISK_CTRL, but it is called directly by
+// disk_write_dword()/disk_write_byte() instead of going through the generic
+// "drive->ctrl = val; disk_command(cpu);" path. That's on purpose: if we let
+// the generic path set drive->ctrl = 8 first, this function would have no
+// way of telling whether it's in the middle of a single-sector write (ctrl
+// was 4) or a multi-sector write (ctrl was 5) - drive->ctrl == 5 could never
+// be true because it would already have been overwritten to 8. Keeping ctrl
+// untouched here is what lets the auto-flush-on-full-buffer logic below
+// actually run.
+static void disk_commit_din(Cpu* cpu) {
+    DiskDrive* drive = DISK_ACTIVE(cpu);
+    uint32_t off = drive->buffer_offset;
+    if (off + 4 <= DISK_SECTOR_SIZE) {
+        uint32_t val = drive->din_shadow;
+        drive->sector_buffer[off + 0] = (uint8_t)(val >> 24);
+        drive->sector_buffer[off + 1] = (uint8_t)(val >> 16);
+        drive->sector_buffer[off + 2] = (uint8_t)(val >> 8);
+        drive->sector_buffer[off + 3] = (uint8_t)(val);
+        drive->buffer_offset = off + 4;
+    }
+
+    // Flush the buffer to disk once a full sector has been written. For a
+    // single-sector write (ctrl == 4) that's the end of the operation; for a
+    // multi-sector write (ctrl == 5) it also advances to the next LBA when
+    // more sectors remain.
+    if ((drive->ctrl == 4 || drive->ctrl == 5) && drive->buffer_offset >= DISK_SECTOR_SIZE) {
+        if (!disk_drive_write_sector(drive)) {
+            drive->status = DISK_STATUS_ERROR;
+        } else if (drive->ctrl == 5 && drive->count > 1) {
+            drive->count--;
+            drive->lba++;
+            drive->buffer_offset = 0;
+            drive->status = DISK_STATUS_BUSY;
+        } else {
+            drive->status = 0;
+        }
+    } else {
+        drive->status = 0;
+    }
+}
+
 // Advance to the next sector during a multi-sector operation.
 static bool disk_advance_sector(DiskDrive* drive) {
     if (drive->count > 1) {
@@ -266,35 +308,9 @@ static void disk_command(Cpu* cpu) {
             break;
         }
 
-        case 8: { // write pending DIN dword into sector buffer
-            uint32_t off = drive->buffer_offset;
-            if (off + 4 <= DISK_SECTOR_SIZE) {
-                uint32_t val = drive->din_shadow;
-                drive->sector_buffer[off + 0] = (uint8_t)(val >> 24);
-                drive->sector_buffer[off + 1] = (uint8_t)(val >> 16);
-                drive->sector_buffer[off + 2] = (uint8_t)(val >> 8);
-                drive->sector_buffer[off + 3] = (uint8_t)(val);
-                drive->buffer_offset = off + 4;
-            }
-
-            // During multi-sector writes, flush the buffer and advance
-            // automatically when a sector is full.
-            if (drive->ctrl == 5 && drive->buffer_offset >= DISK_SECTOR_SIZE) {
-                if (!disk_drive_write_sector(drive)) {
-                    drive->status = DISK_STATUS_ERROR;
-                } else if (drive->count > 1) {
-                    drive->count--;
-                    drive->lba++;
-                    drive->buffer_offset = 0;
-                    drive->status = DISK_STATUS_BUSY;
-                } else {
-                    drive->status = 0;
-                }
-            } else {
-                drive->status = 0;
-            }
+        case 8: // write pending DIN dword into sector buffer (see disk_commit_din)
+            disk_commit_din(cpu);
             break;
-        }
 
         case 0x10: { // format: zero-fill count sectors starting at LBA
             drive->status = DISK_STATUS_BUSY;
@@ -358,9 +374,16 @@ void disk_write_dword(Cpu* cpu, uint32_t addr, uint32_t val) {
     DiskDrive* drive = DISK_ACTIVE(cpu);
     switch (addr) {
         case 0x00020110: drive->status = val; break;
-        case 0x00020111: drive->ctrl = val; disk_command(cpu); break;
+        case 0x00020111:
+            if (val == 8) {
+                disk_commit_din(cpu); // don't clobber ctrl, see disk_commit_din
+            } else {
+                drive->ctrl = val;
+                disk_command(cpu);
+            }
+            break;
         case 0x00020112: drive->lba = val; break;
-        case 0x00020113: drive->lba = val; break;
+        case 0x00020113: drive->lba = (drive->lba & 0x0000FFFF) | ((val & 0xFFFF) << 16); break;
         case 0x00020114: drive->buffer = val; break;
         case 0x00020115: drive->count = val; break;
         case 0x00020116:
@@ -378,7 +401,14 @@ void disk_write_byte(Cpu* cpu, uint32_t addr, uint8_t val) {
     DiskDrive* drive = DISK_ACTIVE(cpu);
     switch (addr) {
         case 0x00020110: drive->status = val; break;
-        case 0x00020111: drive->ctrl = val; disk_command(cpu); break;
+        case 0x00020111:
+            if (val == 8) {
+                disk_commit_din(cpu); // don't clobber ctrl, see disk_commit_din
+            } else {
+                drive->ctrl = val;
+                disk_command(cpu);
+            }
+            break;
         case 0x00020112: drive->lba = (drive->lba & 0xFFFFFF00) | val; break;
         case 0x00020113: drive->lba = (drive->lba & 0xFF00FFFF) | (val << 16); break;
         case 0x00020114: drive->buffer = (drive->buffer & 0xFFFFFF00) | val; break;
@@ -409,19 +439,28 @@ uint32_t disk_read_dword(Cpu* cpu, uint32_t addr) {
     return 0;
 }
 
-uint8_t kbd_read_ascii(Cpu* cpu) {
-    if (cpu->kbd_buffer_pos < cpu->kbd_buffer_len) {
-        uint8_t c = (uint8_t)cpu->kbd_buffer[cpu->kbd_buffer_pos++];
-        if (cpu->kbd_buffer_pos >= cpu->kbd_buffer_len) {
-            cpu->kbd_buffer_pos = 0;
-            cpu->kbd_buffer_len = 0;
-        }
+// Advance the shared keyboard FIFO to the next buffered key (GUI mode).
+// Returns the FIFO index or -1 if empty. kbd_read_ascii / kbd_read_scancode
+// read different fields of the same slot, so they stay in sync.
+static int32_t kbd_pop_key(Cpu* cpu) {
+    if (!cpu || cpu->kbd_buffer_pos >= cpu->kbd_buffer_len) return -1;
+    int32_t i = cpu->kbd_buffer_pos++;
+    if (cpu->kbd_buffer_pos >= cpu->kbd_buffer_len) {
+        cpu->kbd_buffer_pos = 0;
+        cpu->kbd_buffer_len = 0;
+    }
+    return i;
+}
 
+uint8_t kbd_read_ascii(Cpu* cpu) {
+    int32_t i = kbd_pop_key(cpu);
+    if (i >= 0) {
+        uint8_t c = (uint8_t)cpu->kbd_buffer[i];
         if (c == '\n') c = '\r';
         return c;
     }
 
-    if (cpu->gui_mode) {
+    if (!cpu || cpu->gui_mode) {
         return 0;
     }
 
@@ -444,4 +483,12 @@ uint8_t kbd_read_ascii(Cpu* cpu) {
     cpu->kbd_buffer_pos = 0;
     return kbd_read_ascii(cpu);
 #endif
+}
+
+uint8_t kbd_read_scancode(Cpu* cpu) {
+    // Peek the scancode of the head FIFO slot (does not consume it), so a
+    // program can read KBD_SCANCODE then KBD_ASCII and receive a matching pair.
+    if (!cpu || !cpu->gui_mode) return 0;
+    if (cpu->kbd_buffer_pos < cpu->kbd_buffer_len) return cpu->kbd_scancodes[cpu->kbd_buffer_pos];
+    return 0;
 }

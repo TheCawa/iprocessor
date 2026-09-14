@@ -149,12 +149,16 @@ struct Cpu {
     int  kbd_buffer_len;
     int  kbd_buffer_pos;
     bool kbd_irq_pending;
+    uint8_t kbd_scancodes[256]; // parallel FIFO: PC set-1 scancodes for kbd_buffer
+    uint8_t kbd_modifiers;      // KBD_MODIFIER latch (bitmask, see input.h)
+    bool    kbd_tab_down;       // Tab key currently held
 
     // Mouse input state
     int    mouse_x;
     int    mouse_y;
     int    mouse_delta_x;
     int    mouse_delta_y;
+    uint32_t mouse_sens;    // MOUSE_SENS: fixed-point multiplier (1/256), applied to relative deltas
     uint8_t mouse_buttons;
     bool   mouse_irq_pending;
 

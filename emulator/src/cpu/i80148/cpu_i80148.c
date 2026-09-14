@@ -212,6 +212,12 @@ uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
     if (mode == MODE_BYTE && addr == KBD_ASCII_ADDR_I80148) {
         return kbd_read_ascii((Cpu*)cpu);
     }
+    if (mode == MODE_BYTE && addr == KBD_SCANCODE_ADDR_I80148) {
+        return kbd_read_scancode((Cpu*)cpu);
+    }
+    if (mode == MODE_BYTE && addr == KBD_MODIFIER_ADDR_I80148) {
+        return ((Cpu*)cpu)->kbd_modifiers;
+    }
     // Mouse MMIO reads (0x20040..0x20053)
     if (mode == MODE_BYTE && input_is_mmio(addr)) {
         return input_read_byte(cpu, addr);
@@ -387,6 +393,16 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
     }
     if (mode == MODE_DWORD && pit_is_mmio(addr)) {
         pit_write_dword(cpu, addr, (uint32_t)(val & 0xFFFFFFFF));
+        return;
+    }
+    // Mouse MMIO writes (0x20040..0x20053): MOUSE_X/Y are repositionable
+    // (clamped to the current resolution), deltas/buttons are settable too.
+    if (mode == MODE_BYTE && input_is_mmio(addr)) {
+        input_write_byte(cpu, addr, (uint8_t)(val & 0xFF));
+        return;
+    }
+    if (mode == MODE_DWORD && input_is_mmio(addr)) {
+        input_write_dword(cpu, addr, (uint32_t)(val & 0xFFFFFFFF));
         return;
     }
     // RNG MMIO writes (0x20080..0x20081)
