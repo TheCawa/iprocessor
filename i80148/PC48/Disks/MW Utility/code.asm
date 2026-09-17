@@ -18,14 +18,6 @@ init:
 	LDI.dw EX3, 1
 	LOD.dw A1, [0x00030104]
 	CALLR A1
-	LOD.dw IDTR, [0x00020112]
-	
-	LDI.dw IX, 0x00060400
-	LDI.dw EX2, 1
-	LDI.dw EX3, 1
-	LOD.dw A1, [0x00030104]
-	CALLR A1
-	LOD.dw IDTR, [0x00020112]
 	
 main_init:
 	LDI.b XL1, 0x12
@@ -300,6 +292,7 @@ print_unary_l:
 	
 wait_key:
     LOD.B EX7, [0x0002000B] ; KBD_ASCII
+	LOD.b IDTR, [0x00020009]
     CMP.B XL7, 0
     JMP.EQ wait_key
     RET

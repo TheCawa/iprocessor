@@ -543,14 +543,16 @@ rd_disk:
 	LDI.dw A1, 0x00020111
 	XOR A7, A7
 	XOR A0, A0
-	LDI.w X4, 256
-rd_disk_loop:
-	STR.dw EX2, [0x00020112]
+	XOR EX5, EX5
+	XOR EX7, EX7
+	LDI.dw EX4, 256
+rd_disk_l:
+	STR.dw EX2, [A1+1]
 	LDI.b XL7, 2
 	STR.dw EX7, [A1]
 	LDI.dw EX6, 0x0000FFFF
 rd_disk_wait:
-	LOD.dw EX6, [0x00020110] ; Test
+	LOD.dw EX7, [A1-1]
 	LDI.b XL5, 1
 	AND EX7, EX5
 	CMP EX7, R0
@@ -558,34 +560,30 @@ rd_disk_wait:
 	DEC EX6
 	CMP EX6, R0
 	JMP.NE rd_disk_wait
-	LDI.dw EX1, 0xFFFFFFFF
+	XOR EX1, EX1
+	DEC EX1
 	JMP.NE disk_timeout
 rd_disk_ready:
 	LDI.b XL7, 1
-	STR.dw EX7, [A1]
-    XOR EX7, EX7
-    STR.dw EX7, [A1]
+	STR.b XL7, [A1]
+	STR.dw R0, [A1]
 rd_disk_rdata:
 	STR.dw A7, [0x0002011C]
 	LOD.dw EX1, [0x0002011A]
 	STR.dw EX1, [IX:A0]
 	ADD.dw A7, 4
 	ADD.dw A0, 4
-	DEC X4
+	DEC EX4
 	JMP.NZ rd_disk_rdata
 	ADD IX, A0
 	XOR A0, A0
-	LDI.w X4, 256
 	INC EX2
-	STR.dw EX2, [0x00020112]
 	DEC EX3
-	JMP.NZ rd_disk_loop
-rd_disk_seccess:
-	LDI.dw EX1, 0x00000000
+	JMP.NZ rd_disk_l
+	COPY EX1, R0
 	CALL clr_gpr
-	STR.dw R0, [0x0002011C]
 	RET
-	
+
 wr_disk:
 	XOR A7, A7
 	XOR EX7, EX7
@@ -1855,8 +1853,6 @@ t_unknown: .db "UNKNOWN", 10, 0
 ; ОЗУ и единицы измерения memtest
 msg_ram: .db "RAM : ", 0
 msg_kb_ok: .db "KB", 10, 10, 0
-msg_b_ok: .db "B", 10, 10, 0
-msg_mb_ok: .db "MB", 10, 10, 0
 
 ; Дисковые сообщения
 dsk_loading: .db "Starting system disk . . .", 0
@@ -1910,11 +1906,6 @@ advanced_metrics: .db "  None", 0
 
 speed: .db " Frequency ", 0xF7, 0x20, 0
 khz: .db " kHz", 0
-
-; Тестовое сообщение
-hello: .db "Hello world!", 0
-test: .db "Test", 0
-lt_msg: .db "This is long message test. Lenght of this text is 64 characters.", 0
 
 boot_menu_head: .db "  Boot menu  ", 0
 boot_menu_msg: .db 0xBA, "       Select bootable disk       ", 0xBA, 0
