@@ -304,7 +304,6 @@ static uint64_t pop(Cpu* cpu);
 
 static void cpu_trigger_int(Cpu* cpu, uint8_t vector, uint32_t return_addr) {
     push(cpu, return_addr);
-    push(cpu, state(cpu)->regs[REG_FL]);
     cpu->irq_enabled = false;
     uint32_t vec_addr = (uint32_t)(state(cpu)->regs[REG_IDTR] + ((uint32_t)vector << 2));
     state(cpu)->regs[REG_IC] = cpu_read_mem_i80148(cpu, vec_addr, MODE_DWORD);
@@ -1163,7 +1162,6 @@ int cpu_step_i80148(Cpu* cpu) {
             return len;
         }
         case 0x26: // IRET
-            state(cpu)->regs[REG_FL] = pop(cpu);
             state(cpu)->regs[REG_IC] = (uint32_t)pop(cpu);
             cpu->irq_enabled = true;
             return len;

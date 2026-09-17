@@ -294,6 +294,7 @@ static void disk_command(Cpu* cpu) {
             if (drive->image_path[0] == '\0' || !disk_drive_write_sector(drive)) {
                 drive->status = DISK_STATUS_ERROR;
             } else {
+                drive->buffer_offset = 0;
                 drive->status = 0;
             }
             break;
