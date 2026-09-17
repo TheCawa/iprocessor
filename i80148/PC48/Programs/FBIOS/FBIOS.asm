@@ -3,12 +3,17 @@
 .text
 init:
 	CLI
+	LDI.dw IX, 0x00020019
+	LDI.b XL1, 0x05
+	STR.b XL1, [IX]
+	LDI.b XL1, 0x03
+	STR.b XL1, [IX]
 	LDI.dw SP, 0x0004FF00
 	LDI.dw BP, 0x00047F80
-	LDI.b XL1, 0x12
+	LDI.b XL1, 0x00 ; Graphic mode
 	STR.b XL1, [0x0002001A]
 	LDI.b XL1, 0x01
-	STR.b XL1, [0x00020019]
+	STR.b XL1, [IX]
 	
 idtr_init:
 	LDI.dw IDTR, 0x00010000
@@ -311,6 +316,10 @@ skip80xdhr:
 	STR.dw EX1, [A7]
 	STR.dw EX2, [A6]
 	
+	CALL disk_listing
+	LDI.b XL1, 0x0A
+	STR.dw XL1, [0x00020018]
+	
 wait_del:
 	PUSH EX7
 	PUSH EX1
@@ -344,10 +353,7 @@ enter_pressed:
 	POP EX7
 	
 boot:
-	CALL chkdsk_presence
-	LDI.b XL1, 0x0A
-	STR.dw XL1, [0x00020018]
-	
+	CALL find_disk
 	CALL clr_gpr
 	
 	LDI.dw IX, dsk_loading
@@ -390,21 +396,62 @@ disk_timeout:
 	HALT
 	
 disk_not_found:
-	LDI.b XL1, 0x0A
-	STR.dw XL1, [0x00020018]
 	LDI.dw IX, dsk_missing
 	CALL print
 	HALT
 	
-chkdsk_presence:
+find_disk:
+	XOR EX3, EX3
+find_disk_l:
+	STR.dw EX3, [0x00020116]
 	LOD.dw EX2, [0x00020100]
 	LDI.dw EX5, 0x000000FF
 	AND EX2, EX5
 	CMP.b XL2, 0x01
-	JMP.NE disk_not_found
+	JMP.EQ find_disk_end
+	INC EX3
+	CMP.b XL3, 3
+	JMP.GR disk_not_found
+	JMP find_disk_l
+find_disk_end:
 	LOD.dw EX2, [0x00020110]
 	CMP XL2, R0
 	JMP.NE disk_st_error
+	RET
+	
+disk_listing:
+	XOR EX3, EX3
+disk_listing_l:
+	STR.dw EX3, [0x00020116]
+	COPY EX4, EX3
+	ADD.b XL4, 0x30
+	LDI.dw IX, dsk_try
+	CALL print
+	STR.b XL4, [0x00020018]
+	LDI.dw IX, ppp
+	CALL print
+	LOD.dw EX2, [0x00020100]
+	LDI.dw EX5, 0x000000FF
+	AND EX2, EX5
+	CMP.b XL2, 0x01
+	JMP.EQ disk_listing_present
+disk_listing_empty:
+	LDI.dw IX, boot_menu_empty
+	CALL print
+	LDI.b XL1, 0x0A
+	STR.b XL1, [0x00020018]
+	JMP disk_listing_skip0
+disk_listing_present:
+	LDI.dw IX, boot_menu_present
+	CALL print
+	LDI.b XL1, 0x0A
+	STR.b XL1, [0x00020018]
+disk_listing_skip0:
+	INC EX3
+	CMP.b XL3, 3
+	JMP.GR disk_listing_end
+	JMP disk_listing_l
+disk_listing_end:
 	RET
 	
 disk_st_error:
@@ -503,7 +550,7 @@ rd_disk_loop:
 	STR.dw EX7, [A1]
 	LDI.dw EX6, 0x0000FFFF
 rd_disk_wait:
-	LOD.dw EX6, [0x00020110]
+	LOD.dw EX6, [0x00020110] ; Test
 	LDI.b XL5, 1
 	AND EX7, EX5
 	CMP EX7, R0
@@ -524,19 +571,24 @@ rd_disk_rdata:
 	STR.dw EX1, [IX:A0]
 	ADD.dw A7, 4
 	ADD.dw A0, 4
-	DEC EX4
+	DEC X4
 	JMP.NZ rd_disk_rdata
 	ADD IX, A0
 	XOR A0, A0
+	LDI.w X4, 256
 	INC EX2
+	STR.dw EX2, [0x00020112]
 	DEC EX3
 	JMP.NZ rd_disk_loop
 rd_disk_seccess:
 	LDI.dw EX1, 0x00000000
 	CALL clr_gpr
+	STR.dw R0, [0x0002011C]
 	RET
 	
 wr_disk:
+	XOR A7, A7
+	XOR EX7, EX7
 	LDI.dw A1, 0x00020111
 	LDI.w X4, 256
 	XOR A0, A0
@@ -544,7 +596,7 @@ wr_disk_loop:
 	STR.dw EX2, [0x00020112]
 wr_disk_wrdata:
 	XOR FL, FL
-	LOD.dw EX1, [IY:A0]
+	LOD.dw EX1, [IX:A0]
 	LDI.b XL7, 8
 	STR.dw EX1, [0x0002011B]
 	STR.dw EX7, [A1]
@@ -576,11 +628,14 @@ wr_disk_ready:
 	STR.dw EX7, [A1]
 	ADD IY, A0
 	XOR A0, A0
+	LDI.w X4, 256
 	INC EX2
+	STR.dw EX2, [0x00020112]
 	DEC EX3
 	JMP.NZ wr_disk_loop
 wr_disk_success:
 	CALL clr_gpr
+	STR.dw R0, [0x0002011C]
     RET
 
 ; // SETUP UTILITY AND BOOT MENU //
@@ -724,6 +779,8 @@ draw_bottom_line:
 	; BP = 0x00040010 - max settings pointer
 	
 setup_cat_redraw:
+	LDI.dw A3, 0x00020068
+	LDI.dw A4, 0x0002006C
 	STR.dw R0, [A3]
 	LDI.dw IX, 1
 	STR.dw IX, [A4]
@@ -843,12 +900,51 @@ show_main:
 	
 show_advanced:
 	CALL draw_lr
-	STR.dw R0, [0x0004000C] ; 0 rows maximum
+	XOR EX1, EX1
+	INC EX1
+	STR.dw EX1, [0x0004000C] ; 2 rows maximum
+	
+	LDI.dw EX1, 4
+	STR.dw EX1, [A3]
+	LDI.dw EX1, 3
+	STR.dw EX1, [A4]
+	LOD.dw A7, [0x00040004]
+	CMP A7, R0
+	JMP.NE show_advanced_regdump_nonsel
+show_advanced_regdump:
+	LDI.b XL2, 0x7F
+	STR.b XL2, [0x0002001B]
+show_advanced_regdump_nonsel:
+	LDI.dw IX, advanced_rdump
+	CALL print
+	LDI.b XL2, 0x71
+	STR.b XL2, [0x0002001B]
+	LDI.dw EX1, 4
+	STR.dw EX1, [A3]
+	LDI.dw EX1, 4
+	STR.dw EX1, [A4]
+	; LOD.b A7, [0x00040004]
+	CMP.b A7, 0x01
+	JMP.NE show_advanced_metrics_nonsel
+show_advanced_metrics:
+	LDI.b XL2, 0x7F
+	STR.b XL2, [0x0002001B]
+show_advanced_metrics_nonsel:
+	LDI.dw IX, advanced_metrics
+	CALL print
+	LDI.b XL2, 0x71
+	STR.b XL2, [0x0002001B]
 	JMP setup_wait_key
 	
 show_boot:
 	CALL draw_lr
-	STR.dw R0, [0x0004000C] ; 0 rows maximum
+	STR.dw EX1, [0x0004000C] ; 0 rows maximum
+	LDI.dw A0, 4
+	LDI.dw A1, 3
+	STR.dw A0, [A3]
+	STR.dw A1, [A4]
+	LDI.dw IX, boot_menu_empty
+	CALL print
 	JMP setup_wait_key
 	
 show_exit:
@@ -864,7 +960,6 @@ show_exit:
 	LOD.dw A7, [0x00040004]
 	CMP A7, R0
 	JMP.NE show_exit_without_notsel
-	; LOD.b XL1, [0x0002001B]
 	LDI.b XL1, 0x7F
 	STR.b XL1, [0x0002001B]
 	JMP show_exit_without_notsel
@@ -980,15 +1075,26 @@ enter_handler:
 eh_main:
 	JMP setup_wait_key
 eh_advanced:
-	JMP setup_wait_key
+	LDI.dw A7, 0x00040000
+	CMP.b XL2, 0x00
+	JMP.EQ eh_advanced_func0
+	CMP.b XL2, 0x01
+	JMP.EQ eh_advanced_func1
+eh_advanced_func0:
+	CALL rdump_dialog
+eh_advanced_func1:
+	JMP setup_cat_redraw
+	
 eh_boot:
 	JMP setup_wait_key
+	
 eh_exit:
 	LDI.dw A7, 0x00040000
 	CMP.b XL2, 0x00
 	JMP.EQ eh_exit_func0
 	CMP.b XL2, 0x01
 	JMP.EQ eh_exit_func1
+	
 eh_exit_func0:
 	CALL confirm_dialog
 	CMP XL1, R0
@@ -1051,25 +1157,20 @@ confirm_dialog:
 	PUSH EX6
 	PUSH EX7
 	PUSH A7
-	
 	LDI.dw IY, 0x00020060
-	
 	LOD.dw A0, [IY]
 	LOD.dw A1, [IY+4]
 	LSR A0, 1
 	LSR A1, 1
 	SUB.b A0, 14
 	SUB.b A1, 3
-	
 	LDI.b XL1, 0x87
 	STR.b XL1, [0x0002001B]
 	LDI.b XL1, 0x0A
-	
 	INC A0
 	INC A1
 	STR.b A0, [IY+8]
 	STR.b A1, [IY+12]
-	
 	LDI.b XL2, 5
 cdialog_shadow:
 	LDI.b XL7, 0x20
@@ -1079,7 +1180,6 @@ cdialog_shadow:
 	STR.b A0, [IY+8]
 	DEC XL2
 	JMP.NZ cdialog_shadow
-	
 	LDI.b XL1, 0x4F
 	STR.b XL1, [0x0002001B]
 	DEC A0
@@ -1110,7 +1210,6 @@ cdialog_content:
 	STR.b XL1, [0x00020018]
 	DEC XL2
 	JMP.NZ cdialog_content
-	
 	STR.b A0, [IY+8]
 	LDI.b XL1, 0xC0
 	STR.b XL1, [0x00020018]
@@ -1119,7 +1218,6 @@ cdialog_content:
 	CALL print_unary
 	LDI.b XL1, 0xD9
 	STR.b XL1, [0x00020018]
-	
 	ADD.b A0, 2
 	ADD.b A1, 2
 	STR.b A0, [IY+8]
@@ -1145,20 +1243,144 @@ cdialog_wait_key:
 	CMP.b XL7, 0x0D
 	JMP.EQ cdialog_end
 	JMP cdialog_wait_key
-	
 cdialog_y:
 	LDI.b XL1, 0x01
 	STR.b XL7, [0x00020018]
 	STR.b A7, [IY+8]
 	JMP cdialog_wait_key
-
 cdialog_n:
 	COPY XL1, R0
 	STR.b XL7, [0x00020018]
 	STR.b A7, [IY+8]
 	JMP cdialog_wait_key
-	
 cdialog_end:
+	POP A7
+	POP EX7
+	POP EX6
+	POP A1
+	POP A0
+	POP IY
+	POP IX
+	RET
+	
+rdump_dialog:
+	PUSH IX
+	PUSH IY
+	PUSH A0
+	PUSH A1
+	PUSH EX6
+	PUSH EX7
+	PUSH A7
+	PUSH EX2
+	LDI.dw IY, 0x00020060
+	LOD.dw A0, [IY]
+	LOD.dw A1, [IY+4]
+	LSR A0, 1
+	LSR A1, 1
+	SUB.b A0, 15
+	SUB.b A1, 4
+	LDI.b XL1, 0x4F
+	STR.b XL1, [0x0002001B]
+	LDI.b XL1, 0x0A
+	INC A0
+	INC A1
+	STR.b A0, [IY+8]
+	STR.b A1, [IY+12]
+	XOR EX2, EX2
+	LDI.b XL2, 5	
+rdump_fill:
+	LDI.b XL7, 0x20
+	LDI.b XL6, 30
+	CALL print_unary
+	STR.b XL1, [0x00020018]
+	STR.b A0, [IY+8]
+	DEC XL2
+	JMP.NZ rdump_fill
+	LDI.b XL1, 0x4F
+	STR.b XL1, [0x0002001B]
+	STR.b A0, [IY+8]
+	STR.b A1, [IY+12]
+	LDI.b XL1, 0xDA
+	STR.b XL1, [0x00020018]
+	LDI.b XL7, 0xC4
+	LDI.b XL6, 28
+	CALL print_unary
+	LDI.b XL1, 0xBF
+	STR.b XL1, [0x00020018]
+	LDI.b XL1, 0x0A
+	STR.b XL1, [0x00020018]
+	LDI.b XL2, 3
+rdump_content:
+	STR.b A0, [IY+8]
+	LDI.b XL1, 0xB3
+	PUSH EX1
+	STR.b XL1, [0x00020018]
+	LDI.b XL7, 0x20
+	LDI.b XL6, 28
+	CALL print_unary
+	POP EX1
+	STR.b XL1, [0x00020018]
+	LDI.b XL1, 0x0A
+	STR.b XL1, [0x00020018]
+	DEC XL2
+	JMP.NZ rdump_content
+	STR.b A0, [IY+8]
+	LDI.b XL1, 0xC0
+	STR.b XL1, [0x00020018]
+	LDI.b XL7, 0xC4
+	LDI.b XL6, 28
+	CALL print_unary
+	LDI.b XL1, 0xD9
+	STR.b XL1, [0x00020018]
+	INC A0
+	INC A1
+	INC A1
+rdump_main:
+	STR.b A0, [IY+8]
+	STR.b A1, [IY+12]
+	LDI.dw IX, speed
+	CALL print
+	LDI.dw EX1, 2000
+	STR.dw EX1, [0x00020031]
+	XOR EX2, EX2
+rdump_main_l:
+	INC EX2
+	LOD.B EX7, [0x0002000B]
+	CMP.b XL7, 0x00
+	JMP.NE rdump_end
+	LOD.dw EX1, [0x00020031]
+	CMP.dw EX1, 1000
+	JMP.GR rdump_main_l
+	XOR A7, A7
+	COPY EX1, EX2
+	ADD.dw EX1, 100
+	DIV.dw EX1, 143
+dw2dec:
+	LDI.b A6, 10
+	XOR A5, A5
+	LDI.b XL3, 10
+dw2dec_l:
+	COPY EX2, EX1
+	REM EX2, EX3
+	DIV EX1, EX3
+	ADD.b XL2, 0x30
+	STR.b XL2, [BP:A5]
+	INC A5
+	DEC A6
+	JMP.NZ dw2dec_l
+	COPY A4, A5
+dw2dec_out_l:
+	DEC A5
+	LOD.b XL1, [BP:A5]
+	STR.b XL1, [0x00020018]
+	JMP.NZ dw2dec_out_l
+	XOR EX3, EX3
+	XOR EX2, EX2
+	LDI.dw IX, khz
+	CALL print
+	JMP rdump_main
+rdump_end:
+	POP EX2
 	POP A7
 	POP EX7
 	POP EX6
@@ -1514,7 +1736,47 @@ bm_pit:
 	STR.b XL1, [0x00020018]
 	
 	CALL clr_gpr
-	CALL boot
+	CALL bm_boot
+	
+bm_boot:
+	CALL chkdsk_presence
+	CALL clr_gpr
+	
+	LDI.dw IX, dsk_loading
+	CALL print
+
+	LDI.dw IX, 0x00060000
+	XOR A0, A0
+	COPY EX2, R0
+	LDI.dw EX3, 1
+	LOD.dw A1, [0x00030104]
+	CALLR A1
+	; LDI.dw EX1, 0x00000001
+	; INT 0x13
+	CMP EX1, R0
+	JMP.NE disk_read_error
+	
+	; Delay
+	LDI.dw EX7, 2000
+	STR.dw EX7, [0x00020031]
+bm_cbios_delay:
+	LOD.dw EX7, [0x00020031]
+	CMP.dw EX7, 1000
+	JMP.GR bm_cbios_delay
+	LDI.b XL1, 0x01
+	STR.B XL1, [0x00020019]
+	JMA 0x00060000
+	
+chkdsk_presence:
+	LOD.dw EX2, [0x00020100]
+	LDI.dw EX5, 0x000000FF
+	AND EX2, EX5
+	CMP.b XL2, 0x01
+	JMP.NE disk_not_found
+	LOD.dw EX2, [0x00020110]
+	CMP XL2, R0
+	JMP.NE disk_st_error
+	RET
 	
 clr_gpr:
 	XOR EX1, EX1
@@ -1528,6 +1790,7 @@ clr_gpr:
 	RET
 	
 disk_isr:
+	CLI
 	PUSH EX5
 	PUSH EX6
 	PUSH EX7
@@ -1536,8 +1799,8 @@ disk_isr:
 	PUSH A2
 	PUSH A7
 	
-	LOD.dw A2, [0x00020116]
-	STR.dw EX4, [0x00020116]
+	; LOD.dw A2, [0x00020116]
+	; STR.dw EX4, [0x00020116]
 	
 	CMP EX1, R0
 	JMP.EQ disk_isr_end
@@ -1548,18 +1811,18 @@ disk_isr:
 	JMP disk_isr_end
 	
 disk_isr_rd:	
-	; LOD.dw A1, [0x00030104]
-	; CALLR A1
-	CALL rd_disk
+	LOD.dw A1, [0x00030104]
+	CALLR A1
+	; CALL rd_disk
 	JMP disk_isr_end
 	
 disk_isr_wr:
-	; LOD.dw A1, [0x00030108]
-	; CALLR A1
-	CALL wr_disk
+	LOD.dw A1, [0x00030108]
+	CALLR A1
+	; CALL wr_disk
 
 disk_isr_end:
-	STR.dw A2, [0x00020116]
+	; STR.dw A2, [0x00020116]
 	POP A7
 	POP A2
 	POP A1
@@ -1567,11 +1830,12 @@ disk_isr_end:
 	POP EX7
 	POP EX6
 	POP EX5
+	STI
 	IRET
 
 .data
 buffer: .db 0, 0, 0, 0
-msg_init: .db "FBIOS v0.2.01", 0
+msg_init: .db "FBIOS v0.3.01", 0
 msg_fork: .db "-# Forked by FLUSIKS", 10, 0
 msg_gmode: .db "Graphic mode : ", 0
 msg_press_del: .db "Press [DEL] to enter SETUP", 0
@@ -1601,6 +1865,9 @@ dsk_timeout: .db "Disk timed out!", 0
 dsk_missing: .db "No bootable disk found!", 0
 dsk_st_err: .db "Disk status error!", 0
 
+dsk_try: .db " - Disk#", 0
+ppp: .db " ............... ", 0
+
 ; Заголовок списка устройств
 msg_dev_list: .db "*", 205, "XPB Device listing", 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, "*", 10, 0
 msg_dl_header: .db 179, " SLOT - Cid - Vid - Flg - Name             ", 179, 10, 0
@@ -1611,11 +1878,6 @@ msg_dl_hr_down: .db "*", 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 205, 
 msg_dev_list_30: .db "*=XPB Device listing==================*", 10, 0
 msg_dl_header_30: .db "| SLOT - Cid - Vid - Flg - Name       |", 10, 0
 msg_dl_hr_30: .db "+-------------------------------------+", 10, 0
-
-msg_dsk_listing: .db "SDCS Disk listing. . .", 10, 0
-msg_dsk_header: .db "CH#  SECTORS  LBA-SIZE  FLAGS", 10, 0
-msg_dsk_hr: .db 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 196, 10, 0
-msg_dsk_none: .db "        0         0     00", 10, 0
 
 ; Классы устройств
 dev_none: .db "None       ", 0
@@ -1631,7 +1893,7 @@ dev_80stub: .db 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0
 ; Данные для BIOS
 rusure: .db "Are you sure? (Y/N) - ", 0
 cpu_name: .db "CPU: i80148", 0
-bios_ver: .db "BIOS: FBIOS v0.2.01", 0
+bios_ver: .db "BIOS: FBIOS v0.3.01", 0
 
 cat_main: .db "Main", 0 
 cat_advanced: .db "Advanced", 0
@@ -1642,6 +1904,12 @@ boot_seldisk: .db 0x0F, "Select disk for boot", 0
 
 exit_without: .db "  Exit without saving", 0
 exit_sae: .db "  Save and exit", 0
+
+advanced_rdump: .db "  View CPU frequency", 0
+advanced_metrics: .db "  None", 0
+
+speed: .db " Frequency ", 0xF7, 0x20, 0
+khz: .db " kHz", 0
 
 ; Тестовое сообщение
 hello: .db "Hello world!", 0
@@ -1682,3 +1950,12 @@ boot_menu_dskmiss: .db "Disk is missing, try another disk!", 0
 ; 4  |                          |
 ; 5  +==========================+
 ;    XXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
+;    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+; 1  +============================+
+; 2  |                            |
+; 3  | Frequency ~ 0000000000 Khz |
+; 4  |                            |
+; 5  +============================+
+;    XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
