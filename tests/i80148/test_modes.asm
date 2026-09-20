@@ -13,7 +13,7 @@ main:
 
     ; Fill screen with vertical stripes.
     ; EX1 = x (0..319), EX2 = color, EX3 = y (0..239).
-    LDI.DW EX4, 0x00100000      ; VRAM base
+    LDI.DW EX4, 0x00050000      ; VRAM base
     LDI.DW EX5, 0               ; pixel offset
     LDI.DW EX6, 320 * 240       ; total pixels
 
@@ -32,7 +32,7 @@ fill_gfx:
     STR.B XL1, [0x0002001F]     ; VC_MODE = 0x10
 
     ; Clear 40x30 text buffer.
-    LDI.DW EX1, 0x00100000
+    LDI.DW EX1, 0x00050000
     LDI.DW EX2, 40 * 30         ; cells
     LDI.B XL3, 32               ; space
     LDI.B XL4, 0x07             ; attribute
@@ -46,7 +46,7 @@ clear_text:
     JMP.NZ clear_text
 
     ; Print "OK" at top-left.
-    LDI.DW EX1, 0x00100000
+    LDI.DW EX1, 0x00050000
     LDI.B XL2, 0x4F             ; 'O'
     LDI.B XL3, 0x4B             ; 'K'
     LDI.B XL4, 0x0F             ; white on black

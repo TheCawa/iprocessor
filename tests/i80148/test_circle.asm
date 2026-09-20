@@ -5,7 +5,7 @@ start:
     LDI.B XL1, 0x01
     STR.B XL1, [0x0002001A]
 
-    LDI.DW A0, 0x00100000   ; vbuffer base
+    LDI.DW A0, 0x00050000   ; vbuffer base
     LDI.DW A1, 0            ; y
 
 y_loop:

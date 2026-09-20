@@ -143,6 +143,23 @@ static bool disk_drive_ensure_hex_image(DiskDrive* drive) {
     return true;
 }
 
+static uint32_t disk_drive_get_size_sectors(DiskDrive* drive) {
+    if (drive->image_path[0] == '\0') return 0;
+    const char* ext = strrchr(drive->image_path, '.');
+    bool is_hex = (ext && strcasecmp(ext, ".hex") == 0);
+    if (is_hex) {
+        if (!disk_drive_ensure_hex_image(drive)) return 0;
+        return (uint32_t)(drive->image_size / DISK_SECTOR_SIZE);
+    }
+    FILE* f = fopen(drive->image_path, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fclose(f);
+    if (size < 0) return 0;
+    return (uint32_t)(size / DISK_SECTOR_SIZE);
+}
+
 void disk_drive_free_image(DiskDrive* drive) {
     if (drive->image_data) {
         free(drive->image_data);
@@ -393,6 +410,7 @@ void disk_write_dword(Cpu* cpu, uint32_t addr, uint32_t val) {
             }
             break;
         case 0x00020117: drive->status = val; break;
+        case 0x00020118: break;
         case 0x0002011B: drive->din_shadow = val; break; // DISK_DIN
         case 0x0002011C: drive->buffer_offset = val; break;
     }
@@ -433,6 +451,7 @@ uint32_t disk_read_dword(Cpu* cpu, uint32_t addr) {
         case 0x00020113: return drive->lba >> 16;           // DISK_LBA_HI
         case 0x00020114: return drive->buffer;              // DISK_BUFFER
         case 0x00020115: return drive->count;               // DISK_COUNT
+        case 0x00020118: return disk_drive_get_size_sectors(drive); // DISK_SIZE
         case 0x00020119: return DISK_SECTOR_SIZE;           // LBA_SIZE (0x0400)
         case 0x0002011A: return disk_read_dword_from_image(cpu); // DISK_DOUT
         case 0x0002011C: return drive->buffer_offset;       // BUFFER_OFFSET

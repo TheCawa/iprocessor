@@ -81,6 +81,7 @@ static size_t g_desired_vram_kb = 0;
 
 // Input capture state: when true, keyboard/mouse events go to the emulated CPU.
 static bool g_input_captured = false;
+static bool g_scale_mode = false;
 
 // Native Windows file-open dialog
 static bool open_file_dialog(char* out_path, size_t max_len, const char* filter, const char* title) {
@@ -146,6 +147,31 @@ static void emulator_capture_input(void) {
 
 static void emulator_release_input(void) {
     emulator_set_input_capture(false);
+}
+
+static bool emulator_handle_host_hotkeys(Cpu* cpu, SDL_Event* e) {
+    if (!cpu || !e) return false;
+
+    if (e->type != SDL_KEYDOWN || e->key.repeat) return false;
+
+    Uint16 mod = e->key.keysym.mod;
+
+    if ((mod & KMOD_CTRL) && (mod & KMOD_ALT)) {
+        if (e->key.keysym.scancode == SDL_SCANCODE_G) {
+            if (g_input_captured) {
+                emulator_release_input();
+                input_set_modifiers(cpu, 0);
+            }
+            return true;
+        }
+
+        if (e->key.keysym.scancode == SDL_SCANCODE_F) {
+            g_scale_mode = !g_scale_mode;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static void emulator_reset_cpu(Cpu* cpu, std::vector<uint8_t>& memory, std::vector<uint8_t>& vram) {
@@ -493,6 +519,15 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
     }
 
     SDL_Texture* screen_tex = g_vc ? g_vc->get_texture() : nullptr;
+
+    #if SDL_VERSION_ATLEAST(2, 0, 12)
+    if (screen_tex) {
+        SDL_SetTextureScaleMode(
+            screen_tex,
+            g_scale_mode ? SDL_ScaleModeLinear : SDL_ScaleModeNearest
+        );
+    }
+    #endif
     int display_w = (int)(g_display_width * g_display_scale);
     int display_h = (int)(g_display_height * g_display_scale);
 
@@ -771,6 +806,52 @@ void emulator_render(Cpu* cpu, SDL_Renderer* renderer, std::vector<uint8_t>& mem
         ImGui::EndPopup();
     }
 
+    if (g_scale_mode) {
+        ImGui::SetNextWindowPos(ImVec2(0, ImGui::GetFrameHeight()));
+        ImGui::SetNextWindowSize(ImVec2(
+            ImGui::GetIO().DisplaySize.x,
+            ImGui::GetIO().DisplaySize.y - ImGui::GetFrameHeight()
+        ));
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+
+        ImGui::Begin(
+            "ScaleWindow",
+            nullptr,
+            ImGuiWindowFlags_NoDecoration |
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoBringToFrontOnFocus
+        );
+
+        if (screen_tex) {
+            ImVec2 area = ImGui::GetContentRegionAvail();
+
+            if (area.x > 0.0f && area.y > 0.0f) {
+                ImGui::Image((void*)(intptr_t)screen_tex, area);
+
+                if (!g_input_captured &&
+                    ImGui::IsItemHovered() &&
+                    ImGui::IsMouseClicked(0)) {
+                    emulator_capture_input();
+                }
+            }
+        } else {
+            ImGui::Text("No video card initialized.");
+        }
+
+        ImGui::End();
+        ImGui::PopStyleVar();
+
+        ImGui::Render();
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
+        SDL_RenderPresent(renderer);
+
+        return;
+    }
+
     ImGui::SetNextWindowPos(ImVec2(0, ImGui::GetFrameHeight()));
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y - ImGui::GetFrameHeight()));
 
@@ -1038,26 +1119,35 @@ static void emu_handle_key_event(Cpu* cpu, SDL_Event* e) {
 
 bool emulator_handle_events(Cpu* cpu) {
     SDL_Event e;
-    while (SDL_PollEvent(&e)) {
-        // When input is captured, route keyboard/mouse to the emulated CPU
-        // instead of Dear ImGui.
-        if (g_input_captured) {
-            if (e.type == SDL_QUIT) return false;
 
-            if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_QUIT) {
+            return false;
+        }
+
+        if (e.type == SDL_WINDOWEVENT &&
+            e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+            if (g_input_captured) {
                 emulator_release_input();
+                input_set_modifiers(cpu, 0);
+            }
+            continue;
+        }
+
+        // Captured mode: keyboard/mouse go to the emulated CPU.
+        if (g_input_captured) {
+            if (emulator_handle_host_hotkeys(cpu, &e)) {
                 continue;
             }
 
             if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
                 emu_update_modifiers(cpu, &e);
+
                 if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-                    if (e.key.keysym.sym == SDLK_ESCAPE) {
-                        emulator_release_input();
-                        continue;
-                    }
                     char c = emu_key_ascii(e.key.keysym.scancode, e.key.keysym.mod);
-                    if (c) input_feed_key_ex(cpu, c, emu_key_scancode(e.key.keysym.scancode));
+                    if (c) {
+                        input_feed_key_ex(cpu, c, emu_key_scancode(e.key.keysym.scancode));
+                    }
                 }
             }
 
@@ -1073,26 +1163,15 @@ bool emulator_handle_events(Cpu* cpu) {
             continue;
         }
 
-        // Normal (non-captured) mode: events go to ImGui and keyboard/mouse
-        // are also fed to the emulated machine so test programs work without
-        // explicit capture.
+        // Non-captured mode: events go only to ImGui/host frontend.
+        // The emulated machine receives no input until explicit capture.
+        if (emulator_handle_host_hotkeys(cpu, &e)) {
+            continue;
+        }
+
         ImGui_ImplSDL2_ProcessEvent(&e);
-
-        if (e.type == SDL_QUIT) return false;
-
-        if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
-            emu_handle_key_event(cpu, &e);
-        }
-
-        if (e.type == SDL_MOUSEMOTION) {
-            input_mouse_move(cpu, e.motion.xrel, e.motion.yrel);
-        }
-
-        if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
-            bool pressed = (e.type == SDL_MOUSEBUTTONDOWN);
-            input_mouse_button(cpu, e.button.button, pressed);
-        }
     }
+
     return true;
 }
 

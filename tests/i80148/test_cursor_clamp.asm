@@ -20,13 +20,13 @@ start:
     STR.B XL1, [0x00020018]
 
     ; Verify the character landed on row 24, col 0 (last visible line).
-    LDI.DW A0, 0x00100000+((24*80+0)*2)
+    LDI.DW A0, 0x00050000+((24*80+0)*2)
     LOD.B XL2, [A0]
     CMP.B XL2, 'X'
     JMP.NE fail
 
     ; Verify row 30, col 0 was NOT written (must not contain 'X').
-    LDI.DW A0, 0x00100000+((30*80+0)*2)
+    LDI.DW A0, 0x00050000+((30*80+0)*2)
     LOD.B XL2, [A0]
     CMP.B XL2, 'X'
     JMP.EQ fail

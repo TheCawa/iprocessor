@@ -41,6 +41,7 @@
 #include <string.h>
 
 #define DEFAULT_MODE_ADDR   0x0002001A
+#define DEFAULT_CURSOR_STYLE_ADDR 0x0002001C
 
 #define MAX_TEXT_COLS 80
 #define MAX_TEXT_ROWS 60
@@ -113,6 +114,13 @@ static uint8_t  default_prev_gfx[MAX_GFX_WIDTH * MAX_GFX_HEIGHT];
 static int default_initialized = 0;
 static const VideoMode* default_current_mode = NULL;
 static int default_force_redraw = 1;
+static uint32_t default_prev_base = 0xFFFFFFFFu;
+static uint32_t default_prev_cursor_x = 0xFFFFFFFFu;
+static uint32_t default_prev_cursor_y = 0xFFFFFFFFu;
+static bool default_prev_cursor_visible = false;
+static bool default_prev_text_blink = false;
+static uint8_t default_prev_cursor_style = 0xFF;
+static bool default_text_blink_state = false;
 
 // Native 8x16 font generated from the 8x8 font by doubling each scanline.
 static uint8_t default_font8x16[256][16];
@@ -146,6 +154,13 @@ static int default_recreate_texture(const VideoMode* mode, SDL_Renderer* rendere
 
     memset(default_prev_text, 0xFF, sizeof(default_prev_text));
     memset(default_prev_gfx,  0xFF, sizeof(default_prev_gfx));
+    default_prev_base = 0xFFFFFFFFu;
+    default_prev_cursor_x = 0xFFFFFFFFu;
+    default_prev_cursor_y = 0xFFFFFFFFu;
+    default_prev_cursor_visible = false;
+    default_prev_text_blink = false;
+    default_prev_cursor_style = 0xFF;
+    default_text_blink_state = false;
 
     default_current_mode = mode;
     default_force_redraw = 1;
@@ -195,6 +210,22 @@ static inline uint32_t default_vram_base(Cpu* cpu) {
     return cpu ? cpu->term_buffer : 0;
 }
 
+static inline uint32_t default_norm_base(Cpu* cpu) {
+    if (!cpu || !cpu->vram || cpu->vram_size == 0) return 0;
+    return (uint32_t)((uint64_t)cpu->term_buffer % cpu->vram_size);
+}
+
+static inline uint8_t default_cursor_style(Cpu* cpu) {
+    if (!cpu || !cpu->mem || DEFAULT_CURSOR_STYLE_ADDR >= cpu->mem_size) return 0;
+    return cpu->mem[DEFAULT_CURSOR_STYLE_ADDR];
+}
+
+static inline void default_draw_cursor_px(uint32_t* pixels, int stride, int w, int h, int x, int y) {
+    if (x >= 0 && x < w && y >= 0 && y < h) {
+        pixels[y * stride + x] = 0xFFFFFFFF;
+    }
+}
+
 static void default_update_term_res(Cpu* cpu) {
     term_res_update(cpu);
 }
@@ -225,20 +256,26 @@ static void default_update_text(Cpu* cpu, const VideoMode* mode) {
     if (SDL_LockTexture(default_texture, NULL, (void**)&pixels, &pitch) != 0) return;
 
     int stride = pitch / sizeof(uint32_t);
-    uint32_t base = default_vram_base(cpu);
+    uint32_t base = default_norm_base(cpu);
     int dirty = cpu->screen_dirty;
     bool cursor_visible = cpu->term_cursor_visible;
     uint32_t cx = cpu->term_pos_x;
     uint32_t cy = cpu->term_pos_y;
-    bool cursor_blink = ((SDL_GetTicks() / 500) & 1) == 0;
+    bool cursor_blink = default_text_blink_state;
 
     for (int row = 0; row < mode->rows; row++) {
         for (int col = 0; col < mode->cols; col++) {
             int cell_idx = row * mode->cols + col;
-            uint32_t addr = base + (uint32_t)cell_idx * 2;
+            uint8_t ch = ' ';
+            uint8_t attr = 0x07;
 
-            uint8_t ch   = (cpu->vram && addr + 1 < cpu->vram_size) ? cpu->vram[addr]     : ' ';
-            uint8_t attr = (cpu->vram && addr + 1 < cpu->vram_size) ? cpu->vram[addr + 1] : 0x07;
+            if (cpu->vram && cpu->vram_size > 0) {
+                uint32_t a0 = (base + (uint32_t)cell_idx * 2) % cpu->vram_size;
+                uint32_t a1 = (a0 + 1) % cpu->vram_size;
+
+                ch = cpu->vram[a0];
+                attr = cpu->vram[a1];
+            }
 
             uint32_t cell_hash = ((uint32_t)ch << 8) | attr;
             bool is_cursor = cursor_visible && cursor_blink && (uint32_t)col == cx && (uint32_t)row == cy;
@@ -292,15 +329,17 @@ static void default_update_gfx(Cpu* cpu, const VideoMode* mode) {
     if (SDL_LockTexture(default_texture, NULL, (void**)&pixels, &pitch) != 0) return;
 
     int stride = pitch / sizeof(uint32_t);
-    uint32_t base = default_vram_base(cpu);
+    uint32_t base = default_norm_base(cpu);
     int dirty = cpu->screen_dirty;
 
     for (int y = 0; y < mode->height; y++) {
         for (int x = 0; x < mode->width; x++) {
             int idx = y * mode->width + x;
-            uint32_t addr = base + (uint32_t)idx;
+            uint8_t pix = 0;
 
-            uint8_t pix = (cpu->vram && addr < cpu->vram_size) ? cpu->vram[addr] : 0;
+            if (cpu->vram && cpu->vram_size > 0) {
+                pix = cpu->vram[(base + (uint32_t)idx) % cpu->vram_size];
+            }
             if (!dirty && !default_force_redraw && default_prev_gfx[idx] == pix) continue;
             default_prev_gfx[idx] = pix;
 
@@ -310,17 +349,42 @@ static void default_update_gfx(Cpu* cpu, const VideoMode* mode) {
     }
 
     // Draw crosshair cursor if visible.
-    if (cpu->term_cursor_visible && ((SDL_GetTicks() / 500) & 1) == 0) {
+    if (cpu->term_cursor_visible) {
         uint32_t cx = cpu->term_pos_x;
         uint32_t cy = cpu->term_pos_y;
+
         if (cx < (uint32_t)mode->width && cy < (uint32_t)mode->height) {
-            for (int dx = -4; dx <= 4; dx++) {
-                int px = (int)cx + dx;
-                if (px >= 0 && px < mode->width) pixels[cy * stride + px] = 0xFFFFFFFF;
-            }
-            for (int dy = -4; dy <= 4; dy++) {
-                int py = (int)cy + dy;
-                if (py >= 0 && py < mode->height) pixels[py * stride + cx] = 0xFFFFFFFF;
+            uint8_t style = default_cursor_style(cpu);
+            int x = (int)cx;
+            int y = (int)cy;
+
+            if (style == 1) {
+                // Dot
+                default_draw_cursor_px(pixels, stride, mode->width, mode->height, x, y);
+            } else if (style == 2) {
+                // Small cross 5x5
+                for (int d = -2; d <= 2; d++) {
+                    default_draw_cursor_px(pixels, stride, mode->width, mode->height, x + d, y);
+                    default_draw_cursor_px(pixels, stride, mode->width, mode->height, x, y + d);
+                }
+            } else if (style == 3) {
+                // Box 5x5 outline
+                for (int dy = -2; dy <= 2; dy++) {
+                    for (int dx = -2; dx <= 2; dx++) {
+                        if (dx == -2 || dx == 2 || dy == -2 || dy == 2) {
+                            default_draw_cursor_px(pixels, stride, mode->width, mode->height, x + dx, y + dy);
+                        }
+                    }
+                }
+            } else {
+                // Default crosshair 9x9
+                for (int dx = -4; dx <= 4; dx++) {
+                    default_draw_cursor_px(pixels, stride, mode->width, mode->height, x + dx, y);
+                }
+
+                for (int dy = -4; dy <= 4; dy++) {
+                    default_draw_cursor_px(pixels, stride, mode->width, mode->height, x, y + dy);
+                }
             }
         }
     }
@@ -347,7 +411,27 @@ static void default_update(Cpu* cpu) {
         cpu->term_res_x = (uint32_t)mode->cols;
         cpu->term_res_y = (uint32_t)mode->rows;
     }
+    uint32_t base = default_norm_base(cpu);
+    bool blink = (mode->type == MODE_TYPE_TEXT) && (((SDL_GetTicks() / 500) & 1) == 0);
+    uint8_t cursor_style = default_cursor_style(cpu);
 
+    if (base != default_prev_base ||
+        cpu->term_pos_x != default_prev_cursor_x ||
+        cpu->term_pos_y != default_prev_cursor_y ||
+        cpu->term_cursor_visible != default_prev_cursor_visible ||
+        blink != default_prev_text_blink ||
+        cursor_style != default_prev_cursor_style) {
+        default_force_redraw = 1;
+
+        default_prev_base = base;
+        default_prev_cursor_x = cpu->term_pos_x;
+        default_prev_cursor_y = cpu->term_pos_y;
+        default_prev_cursor_visible = cpu->term_cursor_visible;
+        default_prev_text_blink = blink;
+        default_prev_cursor_style = cursor_style;
+    }
+
+    default_text_blink_state = blink;
     if (mode->type == MODE_TYPE_GFX) {
         default_update_gfx(cpu, mode);
     } else {

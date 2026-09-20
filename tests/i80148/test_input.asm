@@ -68,7 +68,7 @@ no_key:
     STR.B XL1, [0x00020018]
 
     ; Simple delay so the screen is readable.
-    LDI.DW EX7, 0x00100000
+    LDI.DW EX7, 0x00050000
 delay:
     DEC EX7
     JMP.NZ delay

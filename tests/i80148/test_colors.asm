@@ -41,7 +41,7 @@ row_loop:
     INC EX2                 ; EX2 = row + 1
     LDI.DW EX3, 160
     MUL EX2, EX3            ; EX2 = (row + 1) * 160
-    LDI.DW EX4, 0x00100000
+    LDI.DW EX4, 0x00050000
     ADD EX4, EX2            ; EX4 = current row start
 
     ; Inner loop: foreground color in EX3 (0..15)
@@ -80,7 +80,7 @@ write_cell:
 ; Uses EX3 (pointer), EX4 (counter). XL7/XL6 are byte aliases to EX7/EX6,
 ; which are free at this point.
 clear_screen:
-    LDI.DW EX3, 0x00100000
+    LDI.DW EX3, 0x00050000
     LDI.DW EX4, 2000        ; number of cells (80 * 25)
     LDI.B XL7, 32           ; space character
     LDI.B XL6, 0x07         ; light gray on black
@@ -94,10 +94,10 @@ clear_loop:
     JMP.NZ clear_loop
     RET
 
-; Print a string to row 0 (or sequentially from 0x00100000).
+; Print a string to row 0 (or sequentially from 0x00050000).
 ; IX = string address, X2 = length (word).
 print_string:
-    LDI.DW EX5, 0x00100000
+    LDI.DW EX5, 0x00050000
     LDI.B XL7, 0x0F         ; white on black for header text
 
 print_loop:

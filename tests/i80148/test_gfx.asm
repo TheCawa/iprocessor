@@ -6,7 +6,7 @@ start:
     STR.B XL1, [0x0002001A]
 
     ; Draw a white diagonal line
-    LDI.DW A0, 0x00100000   ; vbuffer base
+    LDI.DW A0, 0x00050000   ; vbuffer base
     LDI.DW A1, 0            ; y counter
 
 line_loop:

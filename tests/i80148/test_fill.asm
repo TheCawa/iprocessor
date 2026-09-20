@@ -6,7 +6,7 @@ start:
     STR.B XL1, [0x0002001A]
 
     ; Fill screen with gray
-    LDI.DW A0, 0x00100000
+    LDI.DW A0, 0x00050000
     LDI.DW EX1, 64000
 
 fill_loop:

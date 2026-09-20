@@ -10,7 +10,7 @@ start:
 
 loop:
     ; Очищаем экран.
-    LDI.DW A0, 0x00100000
+    LDI.DW A0, 0x00050000
     LDI.DW A1, (320 * 200)
     LDI.B XL1, 0
 clear:
@@ -24,7 +24,7 @@ clear:
     LOD.DW EX2, [0x00020044]   ; MOUSE_Y
 
     ; Вычисляем адрес пикселя: base + y * 320 + x.
-    LDI.DW A0, 0x00100000
+    LDI.DW A0, 0x00050000
     COPY A1, EX2
     LSL A1, 6                    ; y * 64
     COPY A3, EX2

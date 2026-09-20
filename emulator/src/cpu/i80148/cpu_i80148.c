@@ -147,28 +147,35 @@ uint64_t cpu_get_reg_i80148(Cpu* cpu, uint8_t idx) {
 // Translate a VRAM window address (0x00050000..0x0005FFFF) into an offset
 // inside cpu->vram using the current TERM_BUFFER base.
 static inline uint32_t vram_window_translate(Cpu* cpu, uint32_t addr) {
-    return cpu->term_buffer + (addr - VRAM_WINDOW_BASE);
+    if (!cpu || cpu->vram_size == 0) return 0;
+
+    uint64_t off = (uint64_t)cpu->term_buffer + (addr - VRAM_WINDOW_BASE);
+    return (uint32_t)(off % cpu->vram_size);
 }
 
 static uint64_t cpu_read_vram(Cpu* cpu, uint32_t offset, int mode) {
-    if (!cpu->vram || offset >= cpu->vram_size) return 0;
+    if (!cpu->vram || cpu->vram_size == 0) return 0;
+
     int bytes = mode_size(mode);
     uint64_t val = 0;
+
     for (int i = 0; i < bytes; i++) {
-        uint32_t o = offset + i;
-        if (o >= cpu->vram_size) break;
+        uint32_t o = (uint32_t)(((uint64_t)offset + i) % cpu->vram_size);
         val = (val << 8) | cpu->vram[o];
     }
+
     return val;
 }
 
 static void cpu_write_vram(Cpu* cpu, uint32_t offset, uint64_t val, int mode) {
-    if (!cpu->vram || offset >= cpu->vram_size) return;
+    if (!cpu->vram || cpu->vram_size == 0) return;
+
     cpu->screen_dirty = true;
+
     int bytes = mode_size(mode);
+
     for (int i = 0; i < bytes; i++) {
-        uint32_t o = offset + i;
-        if (o >= cpu->vram_size) break;
+        uint32_t o = (uint32_t)(((uint64_t)offset + i) % cpu->vram_size);
         cpu->vram[o] = (val >> ((bytes - 1 - i) * 8)) & 0xFF;
     }
 }
@@ -179,11 +186,6 @@ uint64_t cpu_read_mem_i80148(Cpu* cpu, uint32_t addr, int mode) {
     if (addr >= VRAM_WINDOW_BASE && addr < VRAM_WINDOW_BASE + VRAM_WINDOW_SIZE) {
         uint32_t voff = vram_window_translate(cpu, addr);
         return cpu_read_vram(cpu, voff, mode);
-    }
-
-    // Legacy alias: old programs write to physical VRAM at 0x00100000.
-    if (addr >= VBUFFER_BASE_I80148 && addr < VBUFFER_BASE_I80148 + (uint32_t)cpu->vram_size) {
-        return cpu_read_vram(cpu, addr - VBUFFER_BASE_I80148, mode);
     }
 
     if (addr == 0x0002000C) {
@@ -314,12 +316,6 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
     if (addr >= VRAM_WINDOW_BASE && addr < VRAM_WINDOW_BASE + VRAM_WINDOW_SIZE) {
         uint32_t voff = vram_window_translate(cpu, addr);
         cpu_write_vram(cpu, voff, val, mode);
-        return;
-    }
-
-    // Legacy alias: old programs write to physical VRAM at 0x00100000.
-    if (addr >= VBUFFER_BASE_I80148 && addr < VBUFFER_BASE_I80148 + (uint32_t)cpu->vram_size) {
-        cpu_write_vram(cpu, addr - VBUFFER_BASE_I80148, val, mode);
         return;
     }
 
@@ -461,44 +457,67 @@ void cpu_write_mem_i80148(Cpu* cpu, uint32_t addr, uint64_t val, int mode) {
     }
 }
 
-static uint32_t term_vram_offset(Cpu* cpu) {
-    return cpu->term_buffer;
+static inline uint32_t term_base_wrapped(Cpu* cpu) {
+    if (!cpu->vram || cpu->vram_size == 0) return 0;
+    return (uint32_t)((uint64_t)cpu->term_buffer % cpu->vram_size);
+}
+
+static inline uint32_t term_wrap(Cpu* cpu, uint32_t addr) {
+    if (!cpu->vram || cpu->vram_size == 0) return 0;
+    return addr % cpu->vram_size;
+}
+
+static inline uint32_t term_cell_addr(Cpu* cpu, uint32_t cell) {
+    if (!cpu->vram || cpu->vram_size == 0) return 0;
+
+    uint64_t a = (uint64_t)term_base_wrapped(cpu) + (uint64_t)cell * 2;
+    return (uint32_t)(a % cpu->vram_size);
 }
 
 static void term_scroll(Cpu* cpu) {
-    if (!cpu->vram) return;
-    uint32_t base = term_vram_offset(cpu);
+    if (!cpu->vram || cpu->vram_size == 0) return;
+
     uint32_t cols = cpu->term_res_x ? cpu->term_res_x : TERM_COLS_I80148;
     uint32_t rows = cpu->term_res_y ? cpu->term_res_y : TERM_ROWS_I80148;
-    if (base + rows * cols * 2 > cpu->vram_size) return;
 
-    // Scroll text buffer up by one line
-    for (uint32_t y = 0; y < rows - 1; y++) {
+    if (cols == 0 || rows == 0) return;
+
+    for (uint32_t y = 0; y + 1 < rows; y++) {
         for (uint32_t x = 0; x < cols; x++) {
-            cpu->vram[base + (y * cols + x) * 2] = cpu->vram[base + ((y + 1) * cols + x) * 2];
-            cpu->vram[base + (y * cols + x) * 2 + 1] = cpu->vram[base + ((y + 1) * cols + x) * 2 + 1];
+            uint32_t dst = term_cell_addr(cpu, y * cols + x);
+            uint32_t src = term_cell_addr(cpu, (y + 1) * cols + x);
+
+            cpu->vram[dst] = cpu->vram[src];
+            cpu->vram[term_wrap(cpu, dst + 1)] = cpu->vram[term_wrap(cpu, src + 1)];
         }
     }
-    // Clear last line
+
     uint8_t attr = (uint8_t)(cpu->term_attr & 0xFF);
+
     for (uint32_t x = 0; x < cols; x++) {
-        cpu->vram[base + ((rows - 1) * cols + x) * 2] = ' ';
-        cpu->vram[base + ((rows - 1) * cols + x) * 2 + 1] = attr;
+        uint32_t dst = term_cell_addr(cpu, (rows - 1) * cols + x);
+        cpu->vram[dst] = ' ';
+        cpu->vram[term_wrap(cpu, dst + 1)] = attr;
     }
 }
 
 static void term_clear(Cpu* cpu) {
-    if (!cpu->vram) return;
-    uint32_t base = term_vram_offset(cpu);
+    if (!cpu->vram || cpu->vram_size == 0) return;
+
     uint32_t cols = cpu->term_res_x ? cpu->term_res_x : TERM_COLS_I80148;
     uint32_t rows = cpu->term_res_y ? cpu->term_res_y : TERM_ROWS_I80148;
-    if (base + rows * cols * 2 > cpu->vram_size) return;
+
+    if (cols == 0 || rows == 0) return;
 
     uint8_t attr = (uint8_t)(cpu->term_attr & 0xFF);
-    for (uint32_t i = 0; i < cols * rows; i++) {
-        cpu->vram[base + i * 2] = ' ';
-        cpu->vram[base + i * 2 + 1] = attr;
+    uint32_t total = cols * rows;
+
+    for (uint32_t i = 0; i < total; i++) {
+        uint32_t a = term_cell_addr(cpu, i);
+        cpu->vram[a] = ' ';
+        cpu->vram[term_wrap(cpu, a + 1)] = attr;
     }
+
     cpu->term_cursor_x = 0;
     cpu->term_cursor_y = 0;
     cpu->term_pos_x = 0;
@@ -509,11 +528,12 @@ static void term_clear(Cpu* cpu) {
 static void term_putchar(Cpu* cpu, char c) {
     cpu->screen_dirty = true;
 
-    if (!cpu->vram) return;
-    uint32_t base = term_vram_offset(cpu);
+    if (!cpu->vram || cpu->vram_size == 0) return;
+
     uint32_t cols = cpu->term_res_x ? cpu->term_res_x : TERM_COLS_I80148;
     uint32_t rows = cpu->term_res_y ? cpu->term_res_y : TERM_ROWS_I80148;
-    if (base + rows * cols * 2 > cpu->vram_size) return;
+
+    if (cols == 0 || rows == 0) return;
 
     uint8_t attr = (uint8_t)(cpu->term_attr & 0xFF);
 
@@ -522,15 +542,19 @@ static void term_putchar(Cpu* cpu, char c) {
         cpu->term_cursor_y++;
         cpu->term_pos_x = 0;
         cpu->term_pos_y++;
+
         if (cpu->term_cursor_y >= rows) {
             cpu->term_cursor_y = (uint8_t)(rows - 1);
             cpu->term_pos_y = rows - 1;
+
             if (cpu->term_scroll_enabled) {
                 term_scroll(cpu);
             }
         }
+
         return;
     }
+
     if (c == '\b') {
         if (cpu->term_cursor_x > 0) cpu->term_cursor_x--;
         if (cpu->term_pos_x > 0) cpu->term_pos_x--;
@@ -538,20 +562,26 @@ static void term_putchar(Cpu* cpu, char c) {
     }
 
     uint32_t idx = cpu->term_cursor_y * cols + cpu->term_cursor_x;
+
     if (idx < cols * rows) {
-        cpu->vram[base + idx * 2] = (uint8_t)c;
-        cpu->vram[base + idx * 2 + 1] = attr;
+        uint32_t a = term_cell_addr(cpu, idx);
+        cpu->vram[a] = (uint8_t)c;
+        cpu->vram[term_wrap(cpu, a + 1)] = attr;
     }
+
     cpu->term_cursor_x++;
     cpu->term_pos_x++;
+
     if (cpu->term_cursor_x >= cols) {
         cpu->term_cursor_x = 0;
         cpu->term_cursor_y++;
         cpu->term_pos_x = 0;
         cpu->term_pos_y++;
+
         if (cpu->term_cursor_y >= rows) {
             cpu->term_cursor_y = (uint8_t)(rows - 1);
             cpu->term_pos_y = rows - 1;
+
             if (cpu->term_scroll_enabled) {
                 term_scroll(cpu);
             }
