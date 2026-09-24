@@ -23,7 +23,7 @@
 // Mode is selected by writing to DEFAULT_MODE_ADDR (0x0002001A).
 //
 // Text modes (16-color VGA palette):
-//   0x00 - 80x25, 8x8 font  (640x200) legacy
+//   0x00 - 80x25, 8x8 font  (640x400) legacy
 //   0x10 - 40x30, 8x8 font  (320x240)
 //   0x11 - 80x60, 8x8 font  (640x480)
 //   0x12 - 80x30, 8x8 font stretched to 8x16 (640x480)
@@ -37,6 +37,7 @@
 
 #include "videocard.h"
 #include "font8x8.h"
+#include "font8x16.h"
 #include "term_res.h"
 #include <string.h>
 
@@ -96,14 +97,14 @@ typedef struct {
 } VideoMode;
 
 static const VideoMode g_modes[] = {
-    { 0x00, MODE_TYPE_TEXT, 640, 200, 80, 25, 8,  8 },
-    { 0x01, MODE_TYPE_GFX,  320, 200,  0,  0, 0,  0 },
-    { 0x10, MODE_TYPE_TEXT, 320, 240, 40, 30, 8,  8 },
-    { 0x11, MODE_TYPE_TEXT, 640, 480, 80, 60, 8,  8 },
-    { 0x12, MODE_TYPE_TEXT, 640, 480, 80, 30, 8, 16 }, // native 8x16 font
-    { 0x20, MODE_TYPE_GFX,  320, 240,  0,  0, 0,  0 },
-    { 0x21, MODE_TYPE_GFX,  640, 480,  0,  0, 0,  0 },
-    { 0x22, MODE_TYPE_GFX,  800, 600,  0,  0, 0,  0 },
+    { 0x00, MODE_TYPE_TEXT, 640, 400, 80, 25, 8, 16 },
+    { 0x01, MODE_TYPE_GFX, 320, 200, 0, 0, 0, 0 },
+    { 0x10, MODE_TYPE_TEXT, 320, 240, 40, 30, 8, 8 },
+    { 0x11, MODE_TYPE_TEXT, 640, 480, 80, 60, 8, 8 },
+    { 0x12, MODE_TYPE_TEXT, 640, 480, 80, 30, 8, 16 },
+    { 0x20, MODE_TYPE_GFX, 320, 240, 0, 0, 0, 0 },
+    { 0x21, MODE_TYPE_GFX, 640, 480, 0, 0, 0, 0 },
+    { 0x22, MODE_TYPE_GFX, 800, 600, 0, 0, 0, 0 },
 };
 #define MODE_COUNT (sizeof(g_modes) / sizeof(g_modes[0]))
 
@@ -121,9 +122,6 @@ static bool default_prev_cursor_visible = false;
 static bool default_prev_text_blink = false;
 static uint8_t default_prev_cursor_style = 0xFF;
 static bool default_text_blink_state = false;
-
-// Native 8x16 font generated from the 8x8 font by doubling each scanline.
-static uint8_t default_font8x16[256][16];
 
 static const VideoMode* default_find_mode(uint8_t id) {
     for (int i = 0; i < (int)MODE_COUNT; i++) {
@@ -172,17 +170,6 @@ static int default_init(SDL_Renderer* renderer) {
     default_renderer = renderer;
     default_current_mode = NULL;
     default_force_redraw = 1;
-
-    // Build the 8x16 font from the embedded 8x8 font by duplicating rows.
-    for (int ch = 0; ch < 256; ch++) {
-        uint64_t glyph = font8x8[ch];
-        for (int y = 0; y < 8; y++) {
-            uint8_t row = (uint8_t)((glyph >> (y * 8)) & 0xFF);
-            default_font8x16[ch][y * 2 + 0] = row;
-            default_font8x16[ch][y * 2 + 1] = row;
-        }
-    }
-
     default_build_vga_palette();
     default_initialized = 1;
     return 0;
@@ -292,12 +279,16 @@ static void default_update_text(Cpu* cpu, const VideoMode* mode) {
             int py0 = row * mode->font_h;
 
             if (mode->font_h == 16) {
+                const uint8_t* glyph = font8x16[ch];
+
                 for (int bit_y = 0; bit_y < 16; bit_y++) {
-                    uint8_t row_bits = default_font8x16[ch][bit_y];
+                    uint8_t row_bits = glyph[bit_y];
                     int py = py0 + bit_y;
+
                     for (int bit_x = 0; bit_x < mode->font_w; bit_x++) {
                         int px = px0 + bit_x;
                         int active = (row_bits >> (7 - bit_x)) & 1;
+
                         if (py < mode->height && px < mode->width) {
                             pixels[py * stride + px] = active ? fg : bg;
                         }

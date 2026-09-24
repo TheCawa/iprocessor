@@ -228,7 +228,7 @@ Video cards (selectable via emulator GUI or --vc command line option):
 	"default-mono" - 80x25 green-phosphor monochrome text mode only
 
 Video card "default" modes (selected by VC_MODE 0002001Ah):
-	00h - 80x25 text, 8x8 font, 16-color VGA palette (640x200)
+	00h - 80x25 text, 8x16 font, 16-color VGA palette (640x400)
 	01h - 320x200 256-color graphics (legacy Mode 13h-like)
 	10h - 40x30 text, 8x8 font, 16 colors (320x240)
 	11h - 80x60 text, 8x8 font, 16 colors (640x480)

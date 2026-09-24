@@ -12,9 +12,6 @@ init:
     LDI.DW SP, 0x0004FF00
     LDI.DW BP, 0x00047F80
 
-    ; Force 80x30 stretched text mode and clear screen (taken from FBIOS).
-    LDI.B XL1, 0x12
-    STR.B XL1, [0x0002001A]
     LDI.B XL1, 0x01
     STR.B XL1, [0x00020019]
 

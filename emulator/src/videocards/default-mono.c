@@ -24,15 +24,15 @@
 // -----------------------------------------------------------------------------
 
 #include "videocard.h"
-#include "font8x8.h"
+#include "font8x16.h"
 #include <string.h>
 
 #define DEFAULT_MONO_COLS 80
 #define DEFAULT_MONO_ROWS 25
-#define DEFAULT_MONO_FONT_W FONT8X8_WIDTH
-#define DEFAULT_MONO_FONT_H FONT8X8_HEIGHT
-#define DEFAULT_MONO_WIDTH  (DEFAULT_MONO_COLS * DEFAULT_MONO_FONT_W)  // 640
-#define DEFAULT_MONO_HEIGHT (DEFAULT_MONO_ROWS * DEFAULT_MONO_FONT_H)  // 200
+#define DEFAULT_MONO_FONT_W FONT8X16_WIDTH
+#define DEFAULT_MONO_FONT_H FONT8X16_HEIGHT
+#define DEFAULT_MONO_WIDTH (DEFAULT_MONO_COLS * DEFAULT_MONO_FONT_W) // 640
+#define DEFAULT_MONO_HEIGHT (DEFAULT_MONO_ROWS * DEFAULT_MONO_FONT_H) // 400
 
 // Monochrome green-phosphor palette.
 static const uint32_t default_mono_fg[16] = {
@@ -141,14 +141,15 @@ static void default_mono_update(Cpu* cpu) {
                 uint32_t tmp = fg; fg = bg; bg = tmp;
             }
 
-            uint64_t glyph = font8x8[ch];
+            const uint8_t* glyph = font8x16[ch];
 
             int px0 = x * DEFAULT_MONO_FONT_W;
             int py0 = y * DEFAULT_MONO_FONT_H;
 
             for (int bit_y = 0; bit_y < DEFAULT_MONO_FONT_H; bit_y++) {
-                uint8_t row = (uint8_t)((glyph >> (bit_y * 8)) & 0xFF);
+                uint8_t row = glyph[bit_y];
                 int py = py0 + bit_y;
+
                 for (int bit_x = 0; bit_x < DEFAULT_MONO_FONT_W; bit_x++) {
                     int px = px0 + bit_x;
                     int active = (row >> (7 - bit_x)) & 1;
